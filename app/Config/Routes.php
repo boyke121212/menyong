@@ -128,6 +128,9 @@ $routes->group('api', ['filter' => 'mobileauth'], function ($routes) {
     $routes->post('ambil_absen', 'Api\Cekdata::ambil_absen');
     $routes->post('absen', 'Api\Cekdata::absen');
     $routes->post('pulang', 'Api\Cekdata::pulang');
+    $routes->post('getme', 'Api\Cekdata::getme');
+    $routes->post('simpanprofile', 'Api\Cekdata::simpanprofile');
+    $routes->post('ubahpassword', 'Api\Cekdata::ubahpassword');
     $routes->post('getdoas', 'Api\Cekdata::getdoas');
     $routes->post('sejarah', 'Api\Cekdata::sejarah');
     $routes->post('berita', 'Api\Cekdata::berita');

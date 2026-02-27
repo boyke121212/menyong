@@ -1092,7 +1092,7 @@ class Cekdata extends BaseController
             ->findAll();
 
         foreach ($dataabsen as &$row) {
-            unset($row['bulan'],$row['userId']);
+            unset($row['bulan'], $row['userId']);
         }
         unset($row);
         // AES key untuk response ini
@@ -1497,5 +1497,172 @@ class Cekdata extends BaseController
             'anda sudah absen ' .
                 $ket
         ]);
+    }
+
+
+    public function getme()
+    {
+        $aesKey = bin2hex(random_bytes(32));
+
+        // UID dari MobileFilter
+        $uid = $this->request->uid ?? null;
+        if (!$uid) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'UID tidak ditemukan'
+            ]);
+        }
+        $user = (new Deden())->find($uid);
+        if (!$user) {
+            return $this->error('User tidak ditemukan', 404);
+        }
+
+        $payload = [
+            'username' => (string) ($user['username'] ?? ''),
+            'nip'      => (string) ($user['nip'] ?? ''),
+            'nama'     => (string) ($user['name'] ?? ''),
+            'jabatan'  => (string) ($user['jabatan'] ?? ''),
+            'roleId'   => (string) ($user['roleId'] ?? ''),
+            'pangkat'  => (string) ($user['pangkat'] ?? ''),
+            'subdit'   => (string) ($user['subdit'] ?? ''),
+        ];
+
+        foreach ($payload as $key => $value) {
+            $payload[$key] = $this->encryptAES($value, $aesKey);
+        }
+
+        return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'status'  => 'ok',
+                'aes_key' => $aesKey,
+                'data' => $payload
+            ]);
+    }
+
+    public function simpanprofile()
+    {
+        // UID dari MobileFilter
+        $uid = $this->request->uid ?? null;
+        if (!$uid) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'UID tidak ditemukan'
+            ]);
+        }
+
+        $nama = trim((string) $this->request->getPost('nama'));
+        $pangkat = trim((string) $this->request->getPost('pangkat'));
+        $jabatan = trim((string) $this->request->getPost('jabatan'));
+        $subdit = trim((string) $this->request->getPost('subdit'));
+
+        $user = $this->userModel->find($uid);
+        if (!$user) {
+            return $this->response->setStatusCode(404)->setJSON([
+                'status' => 'error',
+                'message' => 'User tidak ditemukan'
+            ]);
+        }
+
+        $updateData = [];
+        if ($nama !== '') {
+            $updateData['name'] = $nama;
+        }
+        if ($pangkat !== '') {
+            $updateData['pangkat'] = $pangkat;
+        }
+        if ($jabatan !== '') {
+            $updateData['jabatan'] = $jabatan;
+        }
+        if ($subdit !== '') {
+            $updateData['subdit'] = $subdit;
+        }
+
+        if (empty($updateData)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error',
+                'message' => 'Tidak ada data yang diupdate'
+            ]);
+        }
+
+        $updated = $this->userModel->update($uid, $updateData);
+        if (!$updated) {
+            return $this->response->setStatusCode(500)->setJSON([
+                'status' => 'error',
+                'message' => 'Gagal update profile'
+            ]);
+        }
+
+        return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'status'  => 'ok',
+                'message' => 'Profile berhasil diupdate'
+            ]);
+    }
+
+
+    public function ubahpassword()
+    {
+        // UID dari MobileFilter
+        $uid = $this->request->uid ?? null;
+        if (!$uid) {
+            return $this->response->setJSON([
+                'status' => 'error',
+                'message' => 'UID tidak ditemukan'
+            ]);
+        }
+
+        $passwordlama = trim((string) $this->request->getPost('old_password'));
+        $passwordbaru = trim((string) $this->request->getPost('new_password'));
+
+        if ($passwordlama === '' || $passwordbaru === '') {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error',
+                'message' => 'Old password dan new password wajib diisi'
+            ]);
+        }
+
+        $user = $this->userModel->find($uid);
+        if (!$user) {
+            return $this->response->setStatusCode(404)->setJSON([
+                'status' => 'error',
+                'message' => 'User tidak ditemukan'
+            ]);
+        }
+
+        $storedPassword = (string) ($user['password'] ?? '');
+        $isOldPasswordValid = $storedPassword !== '' && password_verify($passwordlama, $storedPassword);
+        if (!$isOldPasswordValid) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error',
+                'message' => 'Password lama tidak sesuai'
+            ]);
+        }
+
+        if (password_verify($passwordbaru, $storedPassword)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error',
+                'message' => 'Password baru tidak boleh sama dengan password lama'
+            ]);
+        }
+
+        $updated = $this->userModel->update($uid, [
+            'password' => password_hash($passwordbaru, PASSWORD_DEFAULT),
+        ]);
+
+        if (!$updated) {
+            return $this->response->setStatusCode(500)->setJSON([
+                'status' => 'error',
+                'message' => 'Gagal mengubah password'
+            ]);
+        }
+
+        return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'status'  => 'ok',
+                'message' => 'Password berhasil diupdate'
+            ]);
     }
 }
