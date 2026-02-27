@@ -18,7 +18,7 @@ class Cekdata extends BaseController
 {
     protected Dauo $dauo;
     protected Berita $berita;
-
+    protected Deden $userModel;
     public function __construct()
     {
         $this->userModel = new Deden();
