@@ -1451,7 +1451,7 @@ class Cekdata extends BaseController
         // log_message('error', '$ket=' . var_export($ket, true));
         // log_message('error', '$sudahkah=' . var_export($sudahkah, true));
         // =====================================================
-        // JIKA DL → SELALU SUDAH
+        // JIKA DL → SELALU SUDAH ya sudah lagh
         // =====================================================
         if ($ket === 'DL' && $sudahkah === "SUDAH") {
             return $this->response->setJSON([
