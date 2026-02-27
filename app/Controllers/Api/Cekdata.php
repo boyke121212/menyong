@@ -1248,6 +1248,9 @@ class Cekdata extends BaseController
                 'latpulang'     => $this->encryptAES($row['latpulang'] ?? '', $aesKey),
                 'lonpulang'    => $this->encryptAES($row['lonpulang'] ?? '', $aesKey),
                 'ketpul'    => $this->encryptAES($row['ketpul'] ?? '', $aesKey),
+                'nip'    => $this->encryptAES($row['nip'] ?? '', $aesKey),
+                'pangkat'    => $this->encryptAES($row['pangkat'] ?? '', $aesKey),
+                'jabatan'    => $this->encryptAES($row['jabatan'] ?? '', $aesKey),
             ];
         }
 
