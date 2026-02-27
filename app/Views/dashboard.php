@@ -125,7 +125,6 @@ if (!empty($bulanAwal)) {
             <div class="table-scroll">
                 <table border="1" cellpadding="5" class="anggaran-table">
                     <tr>
-                        <th>User ID</th>
                         <th>NIP</th>
                         <th>Nama</th>
                         <th>Subdit</th>
@@ -135,7 +134,6 @@ if (!empty($bulanAwal)) {
                     </tr>
                     <?php foreach ($userTerakhir as $u): ?>
                         <tr>
-                            <td><?= esc($u['userId'] ?? '-') ?></td>
                             <td><?= esc($u['username'] ?? '-') ?></td>
                             <td><?= esc($u['name'] ?? '-') ?></td>
                             <td><?= esc($u['subdit'] ?? '-') ?></td>
