@@ -56,6 +56,18 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->get('logout_log', 'Usnmanajemen::logout_log');
     $routes->post('logout_log/data', 'Usnmanajemen::datatable');
     $routes->get('logout_log/export', 'Usnmanajemen::exportlogout');
+    $routes->get('user_management_log', 'Usnmanajemen::user_management_log');
+    $routes->post('user_management_log/data', 'Usnmanajemen::userManagementLogData');
+    $routes->get('user_management_log/export', 'Usnmanajemen::exportUserManagementLog');
+    $routes->get('log_kantor', 'Usnmanajemen::log_kantor');
+    $routes->post('log_kantor/data', 'Usnmanajemen::logKantorData');
+    $routes->get('log_kantor/export', 'Usnmanajemen::exportLogKantor');
+    $routes->get('log_berita', 'Usnmanajemen::log_berita');
+    $routes->post('log_berita/data', 'Usnmanajemen::logBeritaData');
+    $routes->get('log_berita/export', 'Usnmanajemen::exportLogBerita');
+    $routes->get('log_anggaran', 'Usnmanajemen::log_anggaran');
+    $routes->post('log_anggaran/data', 'Usnmanajemen::logAnggaranData');
+    $routes->get('log_anggaran/export', 'Usnmanajemen::exportLogAnggaran');
 
     $routes->get('kantor', 'Usnmanajemen::kantor');
     $routes->post('simpandoas', 'Doas::simpandoas');

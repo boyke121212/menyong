@@ -34,6 +34,145 @@ class Usnmanajemen extends BaseController
         $this->dauo = new Dauo();
         $this->db = Database::connect();
     }
+
+    private function ensureUserManagementLogTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `user_management_log` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(30) NOT NULL,
+                `targetUserId` INT NULL,
+                `targetUsername` VARCHAR(100) NULL,
+                `targetName` VARCHAR(150) NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `payload` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_targetUserId` (`targetUserId`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function ensureLogKantorTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logkantor` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(20) NOT NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `oldData` LONGTEXT NULL,
+                `newData` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function ensureLogBeritaTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logberita` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(30) NOT NULL,
+                `targetBeritaId` INT NULL,
+                `targetJudul` VARCHAR(255) NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `payload` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_targetBeritaId` (`targetBeritaId`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function ensureLogAnggaranTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `loganggaran` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(40) NOT NULL,
+                `tahun` VARCHAR(10) NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `payload` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_tahun` (`tahun`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function writeUserManagementLog(
+        string $action,
+        ?array $targetUser = null,
+        string $description = '',
+        array $payload = []
+    ): void {
+        $this->ensureUserManagementLogTable();
+
+        $session = session();
+        $actorUserId = $session->get('userId');
+        $actor = null;
+
+        if ($actorUserId) {
+            $actor = $this->userModel->where('userId', $actorUserId)->first();
+        }
+
+        $agent = $this->request->getUserAgent();
+
+        $this->db->table('user_management_log')->insert([
+            'action' => $action,
+            'targetUserId' => $targetUser['userId'] ?? null,
+            'targetUsername' => $targetUser['username'] ?? null,
+            'targetName' => $targetUser['name'] ?? null,
+            'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
+            'actorUsername' => $actor['username'] ?? $session->get('username'),
+            'actorName' => $actor['name'] ?? $session->get('name'),
+            'description' => $description,
+            'payload' => !empty($payload) ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+            'ipAddress' => $this->request->getIPAddress(),
+            'userAgent' => $agent ? $agent->getAgentString() : null,
+        ]);
+    }
     public function index() {}
     public function getuser()
     {
@@ -122,6 +261,20 @@ class Usnmanajemen extends BaseController
         ];
 
         $this->userModel->insert($data);
+        $insertedId = $this->userModel->getInsertID();
+        $newUser = null;
+        if ($insertedId) {
+            $newUser = $this->userModel->where('userId', $insertedId)->first();
+        }
+
+        $this->writeUserManagementLog(
+            'ADD_USER',
+            $newUser ?: ['userId' => $insertedId, 'username' => $data['username'], 'name' => $data['name']],
+            'Menambahkan user baru',
+            [
+                'new' => $newUser ?: $data
+            ]
+        );
 
         return redirect()->to('usnmanajemen')
             ->with('flashsuccess', 'User berhasil ditambahkan');
@@ -201,6 +354,22 @@ class Usnmanajemen extends BaseController
         ];
 
         $this->userModel->where('userId', $userId)->update(null, $dataUpdate);
+        $userBaru = $this->userModel->where('userId', $userId)->first();
+
+        $this->writeUserManagementLog(
+            'EDIT_USER',
+            $userBaru ?: $userLama,
+            'Mengubah data user',
+            [
+                'old' => [
+                    'name' => $userLama['name'] ?? null,
+                    'pangkat' => $userLama['pangkat'] ?? null,
+                    'jabatan' => $userLama['jabatan'] ?? null,
+                    'subdit' => $userLama['subdit'] ?? null,
+                ],
+                'new' => $dataUpdate,
+            ]
+        );
 
         return redirect()
             ->to(site_url('usnmanajemen'))
@@ -288,12 +457,27 @@ class Usnmanajemen extends BaseController
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
         }
 
+        if ((int) ($user['roleId'] ?? 0) === 1) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'User role Super Admin tidak dapat dihapus');
+        }
+
 
 
         // =============================
         // HAPUS DATA USER
         // =============================
         $this->userModel->where('userId', $userId)->delete();
+
+        $this->writeUserManagementLog(
+            'DELETE_USER',
+            $user,
+            'Menghapus user',
+            [
+                'deleted' => $user
+            ]
+        );
 
         return redirect()
             ->to(site_url('usnmanajemen'))
@@ -351,6 +535,74 @@ class Usnmanajemen extends BaseController
             'role'    => $user['roleId'],
             'keadaan' => 'apa',
             'page'    => 'logout_log',
+        ]);
+    }
+
+    public function user_management_log()
+    {
+        $this->ensureUserManagementLogTable();
+
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Log User Management',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'apa',
+            'page'    => 'user_management_log',
+        ]);
+    }
+
+    public function log_kantor()
+    {
+        $this->ensureLogKantorTable();
+
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Log Perubahan Kantor',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'apa',
+            'page'    => 'log_kantor',
+        ]);
+    }
+
+    public function log_berita()
+    {
+        $this->ensureLogBeritaTable();
+
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Log Berita',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'apa',
+            'page'    => 'log_berita',
+        ]);
+    }
+
+    public function log_anggaran()
+    {
+        $this->ensureLogAnggaranTable();
+
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Log Anggaran',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'apa',
+            'page'    => 'log_anggaran',
         ]);
     }
 
@@ -412,9 +664,26 @@ class Usnmanajemen extends BaseController
         // =========================
         // HAPUS DATA USER (ROLE 8 SAJA)
         // =========================
+        $deletedUsers = $this->userModel
+            ->select('userId, username, name, nip, jabatan, subdit, roleId')
+            ->whereIn('userId', array_column($users, 'userId'))
+            ->findAll();
+
         $this->userModel
             ->whereIn('userId', array_column($users, 'userId'))
             ->delete();
+
+        foreach ($deletedUsers as $deletedUser) {
+            $this->writeUserManagementLog(
+                'DELETE_USER',
+                $deletedUser,
+                'Menghapus user (bulk delete)',
+                [
+                    'deleted' => $deletedUser,
+                    'mode' => 'bulk'
+                ]
+            );
+        }
 
         return redirect()->back()
             ->with('flashsuccess', 'Data user berhasil dihapus');
@@ -515,6 +784,691 @@ class Usnmanajemen extends BaseController
             'data'            => $data,
             'csrfHash'        => csrf_hash()
         ]);
+    }
+
+    public function userManagementLogData()
+    {
+        $this->ensureUserManagementLogTable();
+
+        $request = service('request');
+        $db = \Config\Database::connect();
+
+        $draw   = intval($request->getPost('draw'));
+        $start  = intval($request->getPost('start'));
+        $length = intval($request->getPost('length'));
+
+        $search    = $request->getPost('search')['value'] ?? '';
+        $startDate = $request->getPost('startDate');
+        $endDate   = $request->getPost('endDate');
+        $action    = $request->getPost('action');
+
+        $builder = $db->table('user_management_log');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('targetUserId', $search)
+                ->orLike('targetUsername', $search)
+                ->orLike('targetName', $search)
+                ->orLike('actorUserId', $search)
+                ->orLike('actorUsername', $search)
+                ->orLike('actorName', $search)
+                ->orLike('description', $search)
+                ->orLike('ipAddress', $search)
+                ->orLike('userAgent', $search)
+                ->groupEnd();
+        }
+
+        $recordsFiltered = $builder->countAllResults(false);
+
+        $data = $builder
+            ->orderBy('createdAt', 'DESC')
+            ->limit($length, $start)
+            ->get()
+            ->getResultArray();
+
+        $recordsTotal = $db->table('user_management_log')->countAll();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => $data,
+            'csrfHash'        => csrf_hash()
+        ]);
+    }
+
+    public function logKantorData()
+    {
+        $this->ensureLogKantorTable();
+
+        $request = service('request');
+        $db = \Config\Database::connect();
+
+        $draw   = intval($request->getPost('draw'));
+        $start  = intval($request->getPost('start'));
+        $length = intval($request->getPost('length'));
+
+        $search    = $request->getPost('search')['value'] ?? '';
+        $startDate = $request->getPost('startDate');
+        $endDate   = $request->getPost('endDate');
+        $action    = $request->getPost('action');
+
+        $builder = $db->table('logkantor');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('actorUserId', $search)
+                ->orLike('actorUsername', $search)
+                ->orLike('actorName', $search)
+                ->orLike('description', $search)
+                ->orLike('oldData', $search)
+                ->orLike('newData', $search)
+                ->orLike('ipAddress', $search)
+                ->orLike('userAgent', $search)
+                ->groupEnd();
+        }
+
+        $recordsFiltered = $builder->countAllResults(false);
+
+        $data = $builder
+            ->orderBy('createdAt', 'DESC')
+            ->limit($length, $start)
+            ->get()
+            ->getResultArray();
+
+        $recordsTotal = $db->table('logkantor')->countAll();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => $data,
+            'csrfHash'        => csrf_hash()
+        ]);
+    }
+
+    public function logBeritaData()
+    {
+        $this->ensureLogBeritaTable();
+
+        $request = service('request');
+        $db = \Config\Database::connect();
+
+        $draw   = intval($request->getPost('draw'));
+        $start  = intval($request->getPost('start'));
+        $length = intval($request->getPost('length'));
+
+        $search    = $request->getPost('search')['value'] ?? '';
+        $startDate = $request->getPost('startDate');
+        $endDate   = $request->getPost('endDate');
+        $action    = $request->getPost('action');
+
+        $builder = $db->table('logberita');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('targetBeritaId', $search)
+                ->orLike('targetJudul', $search)
+                ->orLike('actorUserId', $search)
+                ->orLike('actorUsername', $search)
+                ->orLike('actorName', $search)
+                ->orLike('description', $search)
+                ->orLike('payload', $search)
+                ->orLike('ipAddress', $search)
+                ->orLike('userAgent', $search)
+                ->groupEnd();
+        }
+
+        $recordsFiltered = $builder->countAllResults(false);
+
+        $data = $builder
+            ->orderBy('createdAt', 'DESC')
+            ->limit($length, $start)
+            ->get()
+            ->getResultArray();
+
+        $recordsTotal = $db->table('logberita')->countAll();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => $data,
+            'csrfHash'        => csrf_hash()
+        ]);
+    }
+
+    public function logAnggaranData()
+    {
+        $this->ensureLogAnggaranTable();
+
+        $request = service('request');
+        $db = \Config\Database::connect();
+
+        $draw   = intval($request->getPost('draw'));
+        $start  = intval($request->getPost('start'));
+        $length = intval($request->getPost('length'));
+
+        $search    = $request->getPost('search')['value'] ?? '';
+        $startDate = $request->getPost('startDate');
+        $endDate   = $request->getPost('endDate');
+        $action    = $request->getPost('action');
+
+        $builder = $db->table('loganggaran');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('tahun', $search)
+                ->orLike('actorUserId', $search)
+                ->orLike('actorUsername', $search)
+                ->orLike('actorName', $search)
+                ->orLike('description', $search)
+                ->orLike('payload', $search)
+                ->orLike('ipAddress', $search)
+                ->orLike('userAgent', $search)
+                ->groupEnd();
+        }
+
+        $recordsFiltered = $builder->countAllResults(false);
+
+        $data = $builder
+            ->orderBy('createdAt', 'DESC')
+            ->limit($length, $start)
+            ->get()
+            ->getResultArray();
+
+        $recordsTotal = $db->table('loganggaran')->countAll();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => $data,
+            'csrfHash'        => csrf_hash()
+        ]);
+    }
+
+    public function exportUserManagementLog()
+    {
+        $this->ensureUserManagementLogTable();
+
+        $db = \Config\Database::connect();
+
+        $startDate = $this->request->getGet('startDate');
+        $endDate   = $this->request->getGet('endDate');
+        $action    = $this->request->getGet('action');
+
+        $builder = $db->table('user_management_log');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        $data = $builder->orderBy('createdAt', 'DESC')->get()->getResultArray();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // KOP
+        $sheet->getRowDimension(1)->setRowHeight(42);
+        $sheet->getRowDimension(2)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+
+        $sheet->mergeCells('A1:B3');   // logo
+        $sheet->mergeCells('C1:J1');   // judul
+        $sheet->mergeCells('C2:J2');   // periode
+        $sheet->mergeCells('C3:J3');   // tanggal cetak
+
+        $logoPath = WRITEPATH . 'uploads/photos/logodit.webp';
+        if (file_exists($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('Logo DITTIPIDTER');
+            $logo->setPath($logoPath);
+            $logo->setHeight(70);
+            $logo->setCoordinates('A1');
+            $logo->setOffsetX(20);
+            $logo->setOffsetY(10);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('C1', 'DITTIPIDTER – LOG USER MANAGEMENT');
+        $sheet->getStyle('C1')->getFont()->setBold(true)->setSize(16);
+        $sheet->getStyle('C1')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $filterText = 'Filter: Semua Data';
+        if ($startDate && $endDate) {
+            $filterText = "Filter Tanggal: {$startDate} s/d {$endDate}";
+        }
+        if ($action) {
+            $filterText .= " | Aksi: {$action}";
+        }
+        $sheet->setCellValue('C2', $filterText);
+        $sheet->getStyle('C2')->getFont()->setItalic(true)->setSize(10);
+        $sheet->getStyle('C2')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $sheet->setCellValue('C3', 'Tanggal Cetak: ' . date('Y-m-d H:i:s'));
+        $sheet->getStyle('C3')->getFont()->setSize(9);
+        $sheet->getStyle('C3')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $headerRow = 5;
+        $headers = [
+            'A' => 'ID',
+            'B' => 'Aksi',
+            'C' => 'Target User ID',
+            'D' => 'Target Username',
+            'E' => 'Target Name',
+            'F' => 'Actor',
+            'G' => 'Deskripsi',
+            'H' => 'IP',
+            'I' => 'Waktu',
+            'J' => 'Payload',
+        ];
+
+        foreach ($headers as $col => $text) {
+            $sheet->setCellValue($col . $headerRow, $text);
+            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
+        }
+
+        $row = $headerRow + 1;
+        foreach ($data as $d) {
+            $sheet->setCellValue('A' . $row, $d['id']);
+            $sheet->setCellValue('B' . $row, $d['action']);
+            $sheet->setCellValue('C' . $row, $d['targetUserId']);
+            $sheet->setCellValue('D' . $row, $d['targetUsername']);
+            $sheet->setCellValue('E' . $row, $d['targetName']);
+            $sheet->setCellValue('F' . $row, trim(($d['actorUserId'] ?? '-') . ' / ' . ($d['actorUsername'] ?? '-') . ' / ' . ($d['actorName'] ?? '-')));
+            $sheet->setCellValue('G' . $row, $d['description']);
+            $sheet->setCellValue('H' . $row, $d['ipAddress']);
+            $sheet->setCellValue('I' . $row, $d['createdAt']);
+            $sheet->setCellValue('J' . $row, $d['payload'] ?? '');
+            $row++;
+        }
+
+        if ($row > $headerRow + 1) {
+            $sheet->getStyle("A{$headerRow}:J" . ($row - 1))
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'J') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'LOG_USER_MANAGEMENT_' . date('Ymd_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    public function exportLogKantor()
+    {
+        $this->ensureLogKantorTable();
+
+        $db = \Config\Database::connect();
+
+        $startDate = $this->request->getGet('startDate');
+        $endDate   = $this->request->getGet('endDate');
+        $action    = $this->request->getGet('action');
+
+        $builder = $db->table('logkantor');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        $data = $builder->orderBy('createdAt', 'DESC')->get()->getResultArray();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $sheet->getRowDimension(1)->setRowHeight(42);
+        $sheet->getRowDimension(2)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+
+        $sheet->mergeCells('A1:B3');
+        $sheet->mergeCells('C1:I1');
+        $sheet->mergeCells('C2:I2');
+        $sheet->mergeCells('C3:I3');
+
+        $logoPath = WRITEPATH . 'uploads/photos/logodit.webp';
+        if (file_exists($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('Logo DITTIPIDTER');
+            $logo->setPath($logoPath);
+            $logo->setHeight(70);
+            $logo->setCoordinates('A1');
+            $logo->setOffsetX(20);
+            $logo->setOffsetY(10);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('C1', 'DITTIPIDTER - LOG PERUBAHAN KANTOR');
+        $sheet->getStyle('C1')->getFont()->setBold(true)->setSize(16);
+        $sheet->getStyle('C1')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $filterText = 'Filter: Semua Data';
+        if ($startDate && $endDate) {
+            $filterText = "Filter Tanggal: {$startDate} s/d {$endDate}";
+        }
+        if ($action) {
+            $filterText .= " | Aksi: {$action}";
+        }
+        $sheet->setCellValue('C2', $filterText);
+        $sheet->getStyle('C2')->getFont()->setItalic(true)->setSize(10);
+        $sheet->getStyle('C2')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $sheet->setCellValue('C3', 'Tanggal Cetak: ' . date('Y-m-d H:i:s'));
+        $sheet->getStyle('C3')->getFont()->setSize(9);
+        $sheet->getStyle('C3')->getAlignment()
+            ->setVertical(Alignment::VERTICAL_CENTER)
+            ->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        $headerRow = 5;
+        $headers = [
+            'A' => 'ID',
+            'B' => 'Aksi',
+            'C' => 'Pelaku',
+            'D' => 'Deskripsi',
+            'E' => 'Data Lama',
+            'F' => 'Data Baru',
+            'G' => 'IP',
+            'H' => 'User Agent',
+            'I' => 'Waktu',
+        ];
+
+        foreach ($headers as $col => $text) {
+            $sheet->setCellValue($col . $headerRow, $text);
+            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
+        }
+
+        $row = $headerRow + 1;
+        foreach ($data as $d) {
+            $sheet->setCellValue('A' . $row, $d['id']);
+            $sheet->setCellValue('B' . $row, $d['action']);
+            $sheet->setCellValue('C' . $row, trim(($d['actorUserId'] ?? '-') . ' / ' . ($d['actorUsername'] ?? '-') . ' / ' . ($d['actorName'] ?? '-')));
+            $sheet->setCellValue('D' . $row, $d['description']);
+            $sheet->setCellValue('E' . $row, $d['oldData'] ?? '');
+            $sheet->setCellValue('F' . $row, $d['newData'] ?? '');
+            $sheet->setCellValue('G' . $row, $d['ipAddress']);
+            $sheet->setCellValue('H' . $row, $d['userAgent']);
+            $sheet->setCellValue('I' . $row, $d['createdAt']);
+            $row++;
+        }
+
+        if ($row > $headerRow + 1) {
+            $sheet->getStyle("A{$headerRow}:I" . ($row - 1))
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'I') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'LOG_PERUBAHAN_KANTOR_' . date('Ymd_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    public function exportLogBerita()
+    {
+        $this->ensureLogBeritaTable();
+
+        $db = \Config\Database::connect();
+        $startDate = $this->request->getGet('startDate');
+        $endDate   = $this->request->getGet('endDate');
+        $action    = $this->request->getGet('action');
+
+        $builder = $db->table('logberita');
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        $data = $builder->orderBy('createdAt', 'DESC')->get()->getResultArray();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->getRowDimension(1)->setRowHeight(42);
+        $sheet->getRowDimension(2)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+        $sheet->mergeCells('A1:B3');
+        $sheet->mergeCells('C1:I1');
+        $sheet->mergeCells('C2:I2');
+        $sheet->mergeCells('C3:I3');
+
+        $logoPath = WRITEPATH . 'uploads/photos/logodit.webp';
+        if (file_exists($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('Logo DITTIPIDTER');
+            $logo->setPath($logoPath);
+            $logo->setHeight(70);
+            $logo->setCoordinates('A1');
+            $logo->setOffsetX(20);
+            $logo->setOffsetY(10);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('C1', 'DITTIPIDTER - LOG BERITA');
+        $sheet->getStyle('C1')->getFont()->setBold(true)->setSize(16);
+        $sheet->setCellValue('C2', 'Filter: ' . ($startDate && $endDate ? "{$startDate} s/d {$endDate}" : 'Semua Data') . ($action ? " | Aksi: {$action}" : ''));
+        $sheet->setCellValue('C3', 'Tanggal Cetak: ' . date('Y-m-d H:i:s'));
+
+        $headerRow = 5;
+        $headers = [
+            'A' => 'ID',
+            'B' => 'Aksi',
+            'C' => 'Berita',
+            'D' => 'Pelaku',
+            'E' => 'Deskripsi',
+            'F' => 'Payload',
+            'G' => 'IP',
+            'H' => 'User Agent',
+            'I' => 'Waktu',
+        ];
+        foreach ($headers as $col => $text) {
+            $sheet->setCellValue($col . $headerRow, $text);
+            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
+        }
+
+        $row = $headerRow + 1;
+        foreach ($data as $d) {
+            $sheet->setCellValue('A' . $row, $d['id']);
+            $sheet->setCellValue('B' . $row, $d['action']);
+            $sheet->setCellValue('C' . $row, trim(($d['targetBeritaId'] ?? '-') . ' / ' . ($d['targetJudul'] ?? '-')));
+            $sheet->setCellValue('D' . $row, trim(($d['actorUserId'] ?? '-') . ' / ' . ($d['actorUsername'] ?? '-') . ' / ' . ($d['actorName'] ?? '-')));
+            $sheet->setCellValue('E' . $row, $d['description']);
+            $sheet->setCellValue('F' . $row, $d['payload'] ?? '');
+            $sheet->setCellValue('G' . $row, $d['ipAddress']);
+            $sheet->setCellValue('H' . $row, $d['userAgent']);
+            $sheet->setCellValue('I' . $row, $d['createdAt']);
+            $row++;
+        }
+
+        if ($row > $headerRow + 1) {
+            $sheet->getStyle("A{$headerRow}:I" . ($row - 1))
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'I') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'LOG_BERITA_' . date('Ymd_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    public function exportLogAnggaran()
+    {
+        $this->ensureLogAnggaranTable();
+
+        $db = \Config\Database::connect();
+        $startDate = $this->request->getGet('startDate');
+        $endDate   = $this->request->getGet('endDate');
+        $action    = $this->request->getGet('action');
+
+        $builder = $db->table('loganggaran');
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        $data = $builder->orderBy('createdAt', 'DESC')->get()->getResultArray();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->getRowDimension(1)->setRowHeight(42);
+        $sheet->getRowDimension(2)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+        $sheet->mergeCells('A1:B3');
+        $sheet->mergeCells('C1:I1');
+        $sheet->mergeCells('C2:I2');
+        $sheet->mergeCells('C3:I3');
+
+        $logoPath = WRITEPATH . 'uploads/photos/logodit.webp';
+        if (file_exists($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('Logo DITTIPIDTER');
+            $logo->setPath($logoPath);
+            $logo->setHeight(70);
+            $logo->setCoordinates('A1');
+            $logo->setOffsetX(20);
+            $logo->setOffsetY(10);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('C1', 'DITTIPIDTER - LOG ANGGARAN');
+        $sheet->getStyle('C1')->getFont()->setBold(true)->setSize(16);
+        $sheet->setCellValue('C2', 'Filter: ' . ($startDate && $endDate ? "{$startDate} s/d {$endDate}" : 'Semua Data') . ($action ? " | Aksi: {$action}" : ''));
+        $sheet->setCellValue('C3', 'Tanggal Cetak: ' . date('Y-m-d H:i:s'));
+
+        $headerRow = 5;
+        $headers = [
+            'A' => 'ID',
+            'B' => 'Aksi',
+            'C' => 'Tahun',
+            'D' => 'Pelaku',
+            'E' => 'Deskripsi',
+            'F' => 'Payload',
+            'G' => 'IP',
+            'H' => 'User Agent',
+            'I' => 'Waktu',
+        ];
+        foreach ($headers as $col => $text) {
+            $sheet->setCellValue($col . $headerRow, $text);
+            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
+        }
+
+        $row = $headerRow + 1;
+        foreach ($data as $d) {
+            $sheet->setCellValue('A' . $row, $d['id']);
+            $sheet->setCellValue('B' . $row, $d['action']);
+            $sheet->setCellValue('C' . $row, $d['tahun']);
+            $sheet->setCellValue('D' . $row, trim(($d['actorUserId'] ?? '-') . ' / ' . ($d['actorUsername'] ?? '-') . ' / ' . ($d['actorName'] ?? '-')));
+            $sheet->setCellValue('E' . $row, $d['description']);
+            $sheet->setCellValue('F' . $row, $d['payload'] ?? '');
+            $sheet->setCellValue('G' . $row, $d['ipAddress']);
+            $sheet->setCellValue('H' . $row, $d['userAgent']);
+            $sheet->setCellValue('I' . $row, $d['createdAt']);
+            $row++;
+        }
+
+        if ($row > $headerRow + 1) {
+            $sheet->getStyle("A{$headerRow}:I" . ($row - 1))
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'I') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'LOG_ANGGARAN_' . date('Ymd_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
     }
 
 

@@ -213,6 +213,13 @@ $(function() {
                 orderable: false,
                 searchable: false,
                 render: function(data, type, row) {
+                    const role = parseInt(row.roleId, 10);
+                    const deleteButton = role === 1 ? '' : `
+                        <button class="btn-hapus" onclick="hapusUser(${data})">
+                            Hapus
+                        </button>
+                    `;
+
                     return `
                     <div class="aksi-btn">
                         <form method="get" action="<?= site_url('user/edit') ?>" style="display:inline;">
@@ -220,9 +227,7 @@ $(function() {
                 <input type="hidden" name="userId" value="${data}">
                 <button type="submit" class="btn-edit">Edit</button>
             </form>
-                        <button class="btn-hapus" onclick="hapusUser(${data})">
-                            Hapus
-                        </button>
+                        ${deleteButton}
                         <button class="btn-warning" onclick="openLogoutModal(${data})">
                             Logout
                         </button>

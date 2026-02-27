@@ -4,14 +4,72 @@ namespace App\Controllers;
 
 use App\Controllers\BaseController;
 use App\Models\Dauo;
+use App\Models\Deden;
+use Config\Database;
 
 class Doas extends BaseController
 {
     protected $model;
+    protected Deden $userModel;
+    protected $db;
 
     public function __construct()
     {
         $this->model = new Dauo();
+        $this->userModel = new Deden();
+        $this->db = Database::connect();
+    }
+
+    private function ensureLogKantorTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logkantor` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(20) NOT NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `oldData` LONGTEXT NULL,
+                `newData` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function writeLogKantor(string $action, string $description, array $oldData, array $newData): void
+    {
+        $this->ensureLogKantorTable();
+
+        $session = session();
+        $actorUserId = $session->get('userId');
+        $actor = null;
+
+        if ($actorUserId) {
+            $actor = $this->userModel->where('userId', $actorUserId)->first();
+        }
+
+        $agent = $this->request->getUserAgent();
+
+        $this->db->table('logkantor')->insert([
+            'action' => $action,
+            'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
+            'actorUsername' => $actor['username'] ?? $session->get('username'),
+            'actorName' => $actor['name'] ?? $session->get('name'),
+            'description' => $description,
+            'oldData' => !empty($oldData) ? json_encode($oldData, JSON_UNESCAPED_UNICODE) : null,
+            'newData' => !empty($newData) ? json_encode($newData, JSON_UNESCAPED_UNICODE) : null,
+            'ipAddress' => $this->request->getIPAddress(),
+            'userAgent' => $agent ? $agent->getAgentString() : null,
+        ]);
     }
 
     /**
@@ -144,17 +202,42 @@ class Doas extends BaseController
         // Cek apakah sudah ada data lokasi
         $existing = $builder->get()->getRow();
 
+        $newData = [
+            'jam' => $jam,
+            'pulang' => $pulang,
+            'batasmulai' => $batas_awal_absen,
+            'batasakhir' => $batas_akhir_absen,
+        ];
+
         if ($existing) {
             // ======================
             // UPDATE (hanya 1 baris)
             // ======================
-            $builder->where('id', $existing->id)
-                ->update([
-                    'jam'       => $jam,
-                    'pulang'  => $pulang,
-                    'batasmulai' => $batas_awal_absen,
-                    'batasakhir' => $batas_akhir_absen,
-                ]);
+            $oldData = [
+                'jam' => $existing->jam ?? null,
+                'pulang' => $existing->pulang ?? null,
+                'batasmulai' => $existing->batasmulai ?? null,
+                'batasakhir' => $existing->batasakhir ?? null,
+            ];
+
+            $isChanged = false;
+            foreach ($newData as $key => $value) {
+                if ((string) ($oldData[$key] ?? '') !== (string) $value) {
+                    $isChanged = true;
+                    break;
+                }
+            }
+
+            $builder->where('id', $existing->id)->update($newData);
+
+            if ($isChanged) {
+                $this->writeLogKantor(
+                    'UPDATE_KANTOR',
+                    'Mengubah pengaturan jam kantor',
+                    $oldData,
+                    $newData
+                );
+            }
 
             return redirect()->back()->with(
                 'flashsuccess',
@@ -164,12 +247,14 @@ class Doas extends BaseController
             // ======================
             // INSERT (pertama kali)
             // ======================
-            $builder->insert([
-                'jam'       => $jam,
-                'pulang'  => $pulang,
-                'batasmulai' => $batas_awal_absen,
-                'batasakhir' => $batas_akhir_absen,
-            ]);
+            $builder->insert($newData);
+
+            $this->writeLogKantor(
+                'CREATE_KANTOR',
+                'Membuat pengaturan jam kantor pertama kali',
+                [],
+                $newData
+            );
 
             return redirect()->back()->with(
                 'flashsuccess',

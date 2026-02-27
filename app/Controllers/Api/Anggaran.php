@@ -6,6 +6,8 @@ use App\Controllers\BaseController;
 use App\Models\TahunAnggaranModel;
 use App\Models\AnggaranDetailModel;
 use App\Models\Dauo;
+use App\Models\Deden;
+use Config\Database;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
@@ -21,10 +23,71 @@ use PhpOffice\PhpSpreadsheet\Chart\Title;
 class Anggaran extends BaseController
 {
     protected Dauo $dauo;
+    protected Deden $userModel;
+    protected $db;
 
     public function __construct()
     {
         $this->dauo = new Dauo();
+        $this->userModel = new Deden();
+        $this->db = Database::connect();
+    }
+
+    private function ensureLogAnggaranTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `loganggaran` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(40) NOT NULL,
+                `tahun` VARCHAR(10) NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `payload` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_tahun` (`tahun`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function writeLogAnggaran(
+        string $action,
+        ?string $tahun = null,
+        string $description = '',
+        array $payload = []
+    ): void {
+        $this->ensureLogAnggaranTable();
+
+        $session = session();
+        $actorUserId = $session->get('userId');
+        $actor = null;
+
+        if ($actorUserId) {
+            $actor = $this->userModel->where('userId', $actorUserId)->first();
+        }
+
+        $agent = $this->request->getUserAgent();
+
+        $this->db->table('loganggaran')->insert([
+            'action' => $action,
+            'tahun' => $tahun,
+            'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
+            'actorUsername' => $actor['username'] ?? $session->get('username'),
+            'actorName' => $actor['name'] ?? $session->get('name'),
+            'description' => $description,
+            'payload' => !empty($payload) ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+            'ipAddress' => $this->request->getIPAddress(),
+            'userAgent' => $agent ? $agent->getAgentString() : null,
+        ]);
     }
     public function index()
     {
@@ -132,6 +195,18 @@ class Anggaran extends BaseController
                 'bulan_awal' => $bulanAwal,
                 'created_at' => date('Y-m-d H:i:s')
             ]);
+
+            $this->writeLogAnggaran(
+                'ADD_TAHUN_ANGGARAN',
+                (string) $tahun,
+                'Menambahkan tahun anggaran',
+                [
+                    'new' => [
+                        'tahun' => $tahun,
+                        'bulan_awal' => $bulanAwal,
+                    ]
+                ]
+            );
         }
 
         return redirect()->to(base_url('anggaran?tahun_anggaran=' . $tahun));
@@ -209,6 +284,7 @@ class Anggaran extends BaseController
         }
 
         // ================= SIMPAN =================
+        $changes = [];
         for ($i = 0; $i < count($bulan); $i++) {
 
             $namaSubdit = $subdit[$i];
@@ -240,12 +316,47 @@ class Anggaran extends BaseController
                 'subdit' => $namaSubdit
             ])->first();
 
+            $old = null;
+            if ($existing) {
+                $old = [
+                    'anggaran_diajukan' => (int) ($existing['anggaran_diajukan'] ?? 0),
+                    'anggaran_terserap' => (int) ($existing['anggaran_terserap'] ?? 0),
+                ];
+            }
+
             if ($existing) {
                 $model->update($existing['id'], $data);
             } else {
                 $data['created_at'] = date('Y-m-d H:i:s');
                 $model->insert($data);
             }
+
+            $new = [
+                'anggaran_diajukan' => (int) $nilaiPengajuan,
+                'anggaran_terserap' => (int) $nilaiTerserap,
+            ];
+
+            if ($old === null || $old['anggaran_diajukan'] !== $new['anggaran_diajukan'] || $old['anggaran_terserap'] !== $new['anggaran_terserap']) {
+                $changes[] = [
+                    'subdit' => $namaSubdit,
+                    'bulan' => $bulan[$i],
+                    'old' => $old,
+                    'new' => $new,
+                ];
+            }
+        }
+
+        if (!empty($changes)) {
+            $this->writeLogAnggaran(
+                'LOG_DETAIL_ANGGARAN',
+                (string) $tahun,
+                'Mengubah detail anggaran',
+                [
+                    'tahun' => $tahun,
+                    'changed_count' => count($changes),
+                    'changes' => $changes,
+                ]
+            );
         }
 
         return redirect()
@@ -371,8 +482,21 @@ class Anggaran extends BaseController
         $tahunModel = new TahunAnggaranModel();
         $detailModel = new AnggaranDetailModel();
 
+        $tahunData = $tahunModel->where('tahun', $tahun)->first();
+        $detailCount = $detailModel->where('tahun', $tahun)->countAllResults();
+
         $tahunModel->where('tahun', $tahun)->delete();
         $detailModel->where('tahun', $tahun)->delete();
+
+        $this->writeLogAnggaran(
+            'DELETE_TAHUN_ANGGARAN',
+            (string) $tahun,
+            'Menghapus tahun anggaran',
+            [
+                'deleted_tahun' => $tahunData,
+                'deleted_detail_count' => $detailCount,
+            ]
+        );
 
         return redirect()->to(base_url('anggaran'));
     }
@@ -388,8 +512,20 @@ class Anggaran extends BaseController
                 ->with('flasherror', 'Tahun tidak valid');
         }
 
+        $beforeCount = $model->where('tahun', $tahun)->countAllResults();
+
         // hapus semua detail tahun tersebut
         $model->where('tahun', $tahun)->delete();
+
+        $this->writeLogAnggaran(
+            'RESET_DETAIL_ANGGARAN',
+            (string) $tahun,
+            'Mereset detail anggaran',
+            [
+                'tahun' => $tahun,
+                'deleted_detail_count' => $beforeCount,
+            ]
+        );
 
         return redirect()->to(base_url('anggaran/detail?tahun=' . $tahun))
             ->with('flashsuccess', 'Detail anggaran berhasil direset');

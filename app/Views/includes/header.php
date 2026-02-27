@@ -189,10 +189,11 @@
                                 </li>
                             </ul>
                         </li> -->
-                        <a href="<?= site_url('absensi/laporan') ?>" class="nav-link">
-                            <i class="nav-icon bi bi-box-seam-fill"></i>
-                            <p>Laporan</p>
-                        </a>
+                        <li class="nav-item">
+                            <a href="<?= site_url('absensi/laporan') ?>" class="nav-link">
+                                <i class="nav-icon bi bi-box-seam-fill"></i>
+                                <p>Laporan</p>
+                            </a>
                         </li>
 
                         <li class="nav-item">
@@ -222,17 +223,51 @@
                         </li>
 
                         <li class="nav-item">
-                            <a href="<?= site_url('login_log') ?>" class="nav-link">
-                                <i class="bi bi-file-earmark-check"></i>
-                                <p>Log Login</p>
+                            <a href="#" class="nav-link">
+                                <i class="nav-icon bi bi-journal-text"></i>
+                                <p>
+                                    Log
+                                    <i class="nav-arrow bi bi-chevron-right"></i>
+                                </p>
                             </a>
-                        </li>
-
-                        <li class="nav-item">
-                            <a href="<?= site_url('logout_log') ?>" class="nav-link">
-                                <i class="bi bi-file-earmark-check"></i>
-                                <p>Log Logout</p>
-                            </a>
+                            <ul class="nav nav-treeview">
+                                <li class="nav-item">
+                                    <a href="<?= site_url('login_log') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log Login</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('logout_log') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log Logout</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('user_management_log') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log user management</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('log_kantor') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log Perubahan Kantor</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('log_berita') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log Berita</p>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('log_anggaran') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log Anggaran</p>
+                                    </a>
+                                </li>
+                            </ul>
                         </li>
                         <li class="nav-item">
                             <a href="<?= site_url('anggaran') ?>" class="nav-link">

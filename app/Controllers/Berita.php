@@ -4,16 +4,78 @@ namespace App\Controllers;
 
 use App\Models\BeritaModel;
 use App\Models\Deden;
+use Config\Database;
 
 class Berita extends BaseController
 {
     protected $berita;
     protected $dauo;
+    protected $db;
 
     public function __construct()
     {
         $this->berita = new BeritaModel();
         $this->dauo   = new Deden();
+        $this->db = Database::connect();
+    }
+
+    private function ensureLogBeritaTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logberita` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(30) NOT NULL,
+                `targetBeritaId` INT NULL,
+                `targetJudul` VARCHAR(255) NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `payload` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_targetBeritaId` (`targetBeritaId`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
+    private function writeLogBerita(
+        string $action,
+        ?array $target = null,
+        string $description = '',
+        array $payload = []
+    ): void {
+        $this->ensureLogBeritaTable();
+
+        $session = session();
+        $actorUserId = $session->get('userId');
+        $actor = null;
+
+        if ($actorUserId) {
+            $actor = $this->dauo->where('userId', $actorUserId)->first();
+        }
+
+        $agent = $this->request->getUserAgent();
+
+        $this->db->table('logberita')->insert([
+            'action' => $action,
+            'targetBeritaId' => $target['id'] ?? null,
+            'targetJudul' => $target['judul'] ?? null,
+            'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
+            'actorUsername' => $actor['username'] ?? $session->get('username'),
+            'actorName' => $actor['name'] ?? $session->get('name'),
+            'description' => $description,
+            'payload' => !empty($payload) ? json_encode($payload, JSON_UNESCAPED_UNICODE) : null,
+            'ipAddress' => $this->request->getIPAddress(),
+            'userAgent' => $agent ? $agent->getAgentString() : null,
+        ]);
     }
 
     /* ===============================
@@ -149,7 +211,17 @@ class Berita extends BaseController
         $id = $this->request->getPost('id');
 
         if ($id) {
+            $old = $this->berita->find($id);
             $this->berita->delete($id);
+
+            if ($old) {
+                $this->writeLogBerita(
+                    'DELETE_BERITA',
+                    $old,
+                    'Menghapus berita',
+                    ['deleted' => $old]
+                );
+            }
         }
 
         return $this->response->setJSON([
@@ -210,6 +282,15 @@ class Berita extends BaseController
             'foto'    => $fotoName,
             'pdf'     => $pdfName,
         ]);
+        $id = $this->berita->getInsertID();
+        $newBerita = $id ? $this->berita->find($id) : null;
+
+        $this->writeLogBerita(
+            'ADD_BERITA',
+            $newBerita ?: ['id' => $id, 'judul' => $judul],
+            'Menambahkan berita',
+            ['new' => $newBerita]
+        );
 
         return redirect()->to(site_url('berita'))->with('flashsuccess', 'Berita berhasil ditambahkan');
     }
@@ -297,13 +378,26 @@ class Berita extends BaseController
             $pdfName = $newPdf;
         }
 
-        $this->berita->update($id, [
+        $newData = [
             'judul'   => $judul,
             'isi'     => $isi,
             'tanggal' => $tanggal,
             'foto'    => $fotoName,
             'pdf'     => $pdfName,
-        ]);
+        ];
+
+        $this->berita->update($id, $newData);
+        $updated = $this->berita->find($id);
+
+        $this->writeLogBerita(
+            'EDIT_BERITA',
+            $updated ?: ['id' => $id, 'judul' => $judul],
+            'Mengubah berita',
+            [
+                'old' => $item,
+                'new' => $updated ?: $newData
+            ]
+        );
 
         return redirect()->to(site_url('berita/edit/' . $id))->with('flashsuccess', 'Berita berhasil diperbarui');
     }

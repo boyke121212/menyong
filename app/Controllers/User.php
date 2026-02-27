@@ -80,14 +80,15 @@ class User extends Controller
         }
         return $this->response->setJSON([
             "draw" => intval($draw),
-            "recordsTotal" => $model->countAllData(),
-            "recordsFiltered" => $model->countFilteredData($search),
+            "recordsTotal" => $model->countAllData($roleId),
+            "recordsFiltered" => $model->countFilteredData($search, $roleId),
             "data" => $model->getDatatables(
                 $start,
                 $length,
                 $search,
                 $orderColumn,
-                $orderDir
+                $orderDir,
+                $roleId
             )
         ]);
     }

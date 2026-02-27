@@ -15,7 +15,7 @@
         </div>
     </div>
 
-    <div class="card-body">
+    <div class="card-body log-table-wrap">
         <table id="logoutTable" class="table table-bordered table-hover table-sm w-100">
             <thead class="table-light">
                 <tr>
@@ -36,6 +36,7 @@
 </div>
 <script>
 $(document).ready(function() {
+    const escHtml = (v) => $('<div>').text(v ?? '').html();
 
     let csrfName = '<?= csrf_token() ?>';
     let csrfHash = '<?= csrf_hash() ?>';
@@ -64,7 +65,10 @@ $(document).ready(function() {
                 data: 'userId'
             },
             {
-                data: 'alasan'
+                data: 'alasan',
+                render: function(data) {
+                    return '<span class="log-wrap-cell">' + escHtml(data || '-') + '</span>';
+                }
             },
             {
                 data: 'oleh'
@@ -79,13 +83,22 @@ $(document).ready(function() {
                 data: 'platform'
             },
             {
-                data: 'userAgent'
+                data: 'userAgent',
+                render: function(data) {
+                    return '<span class="log-wrap-cell">' + escHtml(data || '-') + '</span>';
+                }
             },
             {
-                data: 'terlogout'
+                data: 'terlogout',
+                render: function(data) {
+                    return data ? ('<pre class="log-pre mb-0">' + escHtml(data) + '</pre>') : '-';
+                }
             },
             {
-                data: 'pelogout'
+                data: 'pelogout',
+                render: function(data) {
+                    return data ? ('<pre class="log-pre mb-0">' + escHtml(data) + '</pre>') : '-';
+                }
             }
         ],
         order: [
@@ -111,5 +124,34 @@ $(document).ready(function() {
 <style>
 input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1) brightness(0.8);
+}
+
+.log-table-wrap {
+    overflow-x: auto;
+}
+
+.log-table-wrap table {
+    width: 100% !important;
+}
+
+.log-table-wrap th,
+.log-table-wrap td {
+    white-space: normal !important;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.log-pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    margin: 0;
+    max-width: 460px;
+}
+
+.log-wrap-cell {
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 </style>

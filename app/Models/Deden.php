@@ -55,12 +55,30 @@ class Deden extends Model
     // 🔥 DATATABLES SERVER SIDE
     // ==============================
 
-    private function _datatableQuery($search)
+    private function applyRoleVisibilityFilter($builder, int $viewerRoleId): void
+    {
+        if ($viewerRoleId === 2) {
+            // Role 2 bisa lihat semua kecuali role 1
+            $builder->where('roleId !=', 1);
+            return;
+        }
+
+        if ($viewerRoleId === 3) {
+            // Role 3 hanya bisa lihat role 8
+            $builder->where('roleId', 8);
+            return;
+        }
+        // Role 1: tanpa filter (lihat semua)
+    }
+
+    private function _datatableQuery($search, int $viewerRoleId = 1)
     {
         $builder = $this->db->table($this->table);
         $builder->select(
             'userId, username, name, jabatan, nip, subdit, status, pangkat,roleId'
         );
+
+        $this->applyRoleVisibilityFilter($builder, $viewerRoleId);
 
         if (!empty($search)) {
             $builder->groupStart();
@@ -73,9 +91,9 @@ class Deden extends Model
         return $builder;
     }
 
-    public function getDatatables($start, $length, $search, $orderColumn = null, $orderDir = 'asc')
+    public function getDatatables($start, $length, $search, $orderColumn = null, $orderDir = 'asc', int $viewerRoleId = 1)
     {
-        $builder = $this->_datatableQuery($search);
+        $builder = $this->_datatableQuery($search, $viewerRoleId);
 
         // 🔐 whitelist kolom yang boleh di-sort
         $allowedSort = [
@@ -122,14 +140,16 @@ class Deden extends Model
     }
 
 
-    public function countAllData()
+    public function countAllData(int $viewerRoleId = 1)
     {
-        return $this->db->table($this->table)->countAllResults();
+        $builder = $this->db->table($this->table);
+        $this->applyRoleVisibilityFilter($builder, $viewerRoleId);
+        return $builder->countAllResults();
     }
 
-    public function countFilteredData($search)
+    public function countFilteredData($search, int $viewerRoleId = 1)
     {
-        $builder = $this->_datatableQuery($search);
+        $builder = $this->_datatableQuery($search, $viewerRoleId);
         return $builder->countAllResults();
     }
 
