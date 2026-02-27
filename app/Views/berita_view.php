@@ -14,6 +14,7 @@ value="<?= csrf_hash() ?>">
     <th>Foto</th>
     <th>PDF</th>
     <th>Aksi</th>
+     <th></th>
 </tr>
 </thead>
 </table>
