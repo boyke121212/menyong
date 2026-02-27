@@ -141,6 +141,31 @@ class Usnmanajemen extends BaseController
         $this->db->query($sql);
     }
 
+    private function ensureLogAboutTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logabout` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(20) NOT NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `oldData` LONGTEXT NULL,
+                `newData` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
     private function writeUserManagementLog(
         string $action,
         ?array $targetUser = null,
@@ -606,6 +631,23 @@ class Usnmanajemen extends BaseController
         ]);
     }
 
+    public function log_about()
+    {
+        $this->ensureLogAboutTable();
+
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Log About',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'apa',
+            'page'    => 'log_about',
+        ]);
+    }
+
     public function kantor()
     {
         $session = session();
@@ -1014,6 +1056,65 @@ class Usnmanajemen extends BaseController
             ->getResultArray();
 
         $recordsTotal = $db->table('loganggaran')->countAll();
+
+        return $this->response->setJSON([
+            'draw'            => $draw,
+            'recordsTotal'    => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data'            => $data,
+            'csrfHash'        => csrf_hash()
+        ]);
+    }
+
+    public function logAboutData()
+    {
+        $this->ensureLogAboutTable();
+
+        $request = service('request');
+        $db = \Config\Database::connect();
+
+        $draw   = intval($request->getPost('draw'));
+        $start  = intval($request->getPost('start'));
+        $length = intval($request->getPost('length'));
+
+        $search    = $request->getPost('search')['value'] ?? '';
+        $startDate = $request->getPost('startDate');
+        $endDate   = $request->getPost('endDate');
+        $action    = $request->getPost('action');
+
+        $builder = $db->table('logabout');
+
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        if ($search !== '') {
+            $builder->groupStart()
+                ->like('actorUserId', $search)
+                ->orLike('actorUsername', $search)
+                ->orLike('actorName', $search)
+                ->orLike('description', $search)
+                ->orLike('oldData', $search)
+                ->orLike('newData', $search)
+                ->orLike('ipAddress', $search)
+                ->orLike('userAgent', $search)
+                ->groupEnd();
+        }
+
+        $recordsFiltered = $builder->countAllResults(false);
+
+        $data = $builder
+            ->orderBy('createdAt', 'DESC')
+            ->limit($length, $start)
+            ->get()
+            ->getResultArray();
+
+        $recordsTotal = $db->table('logabout')->countAll();
 
         return $this->response->setJSON([
             'draw'            => $draw,
@@ -1462,6 +1563,104 @@ class Usnmanajemen extends BaseController
         }
 
         $filename = 'LOG_ANGGARAN_' . date('Ymd_His') . '.xlsx';
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"{$filename}\"");
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    public function exportLogAbout()
+    {
+        $this->ensureLogAboutTable();
+
+        $db = \Config\Database::connect();
+        $startDate = $this->request->getGet('startDate');
+        $endDate   = $this->request->getGet('endDate');
+        $action    = $this->request->getGet('action');
+
+        $builder = $db->table('logabout');
+        if ($startDate && $endDate) {
+            $builder->where('createdAt >=', $startDate . ' 00:00:00')
+                ->where('createdAt <=', $endDate . ' 23:59:59');
+        }
+        if ($action) {
+            $builder->where('action', $action);
+        }
+
+        $data = $builder->orderBy('createdAt', 'DESC')->get()->getResultArray();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->getRowDimension(1)->setRowHeight(42);
+        $sheet->getRowDimension(2)->setRowHeight(28);
+        $sheet->getRowDimension(3)->setRowHeight(18);
+        $sheet->mergeCells('A1:B3');
+        $sheet->mergeCells('C1:I1');
+        $sheet->mergeCells('C2:I2');
+        $sheet->mergeCells('C3:I3');
+
+        $logoPath = WRITEPATH . 'uploads/photos/logodit.webp';
+        if (file_exists($logoPath)) {
+            $logo = new Drawing();
+            $logo->setName('Logo DITTIPIDTER');
+            $logo->setPath($logoPath);
+            $logo->setHeight(70);
+            $logo->setCoordinates('A1');
+            $logo->setOffsetX(20);
+            $logo->setOffsetY(10);
+            $logo->setWorksheet($sheet);
+        }
+
+        $sheet->setCellValue('C1', 'DITTIPIDTER - LOG ABOUT');
+        $sheet->getStyle('C1')->getFont()->setBold(true)->setSize(16);
+        $sheet->setCellValue('C2', 'Filter: ' . ($startDate && $endDate ? "{$startDate} s/d {$endDate}" : 'Semua Data') . ($action ? " | Aksi: {$action}" : ''));
+        $sheet->setCellValue('C3', 'Tanggal Cetak: ' . date('Y-m-d H:i:s'));
+
+        $headerRow = 5;
+        $headers = [
+            'A' => 'ID',
+            'B' => 'Aksi',
+            'C' => 'Pelaku',
+            'D' => 'Deskripsi',
+            'E' => 'Data Lama',
+            'F' => 'Data Baru',
+            'G' => 'IP',
+            'H' => 'User Agent',
+            'I' => 'Waktu',
+        ];
+        foreach ($headers as $col => $text) {
+            $sheet->setCellValue($col . $headerRow, $text);
+            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
+        }
+
+        $row = $headerRow + 1;
+        foreach ($data as $d) {
+            $sheet->setCellValue('A' . $row, $d['id']);
+            $sheet->setCellValue('B' . $row, $d['action']);
+            $sheet->setCellValue('C' . $row, trim(($d['actorUserId'] ?? '-') . ' / ' . ($d['actorUsername'] ?? '-') . ' / ' . ($d['actorName'] ?? '-')));
+            $sheet->setCellValue('D' . $row, $d['description']);
+            $sheet->setCellValue('E' . $row, $d['oldData'] ?? '');
+            $sheet->setCellValue('F' . $row, $d['newData'] ?? '');
+            $sheet->setCellValue('G' . $row, $d['ipAddress']);
+            $sheet->setCellValue('H' . $row, $d['userAgent']);
+            $sheet->setCellValue('I' . $row, $d['createdAt']);
+            $row++;
+        }
+
+        if ($row > $headerRow + 1) {
+            $sheet->getStyle("A{$headerRow}:I" . ($row - 1))
+                ->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        }
+
+        foreach (range('A', 'I') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'LOG_ABOUT_' . date('Ymd_His') . '.xlsx';
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header("Content-Disposition: attachment; filename=\"{$filename}\"");
         header('Cache-Control: max-age=0');

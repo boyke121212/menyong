@@ -267,6 +267,12 @@
                                         <p>Log Anggaran</p>
                                     </a>
                                 </li>
+                                <li class="nav-item">
+                                    <a href="<?= site_url('log_about') ?>" class="nav-link">
+                                        <i class="nav-icon bi bi-circle"></i>
+                                        <p>Log About</p>
+                                    </a>
+                                </li>
                             </ul>
                         </li>
                         <li class="nav-item">

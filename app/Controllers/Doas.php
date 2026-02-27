@@ -45,6 +45,31 @@ class Doas extends BaseController
         $this->db->query($sql);
     }
 
+    private function ensureLogAboutTable(): void
+    {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS `logabout` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `action` VARCHAR(20) NOT NULL,
+                `actorUserId` INT NULL,
+                `actorUsername` VARCHAR(100) NULL,
+                `actorName` VARCHAR(150) NULL,
+                `description` TEXT NULL,
+                `oldData` LONGTEXT NULL,
+                `newData` LONGTEXT NULL,
+                `ipAddress` VARCHAR(45) NULL,
+                `userAgent` TEXT NULL,
+                `createdAt` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_createdAt` (`createdAt`),
+                KEY `idx_action` (`action`),
+                KEY `idx_actorUserId` (`actorUserId`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ";
+
+        $this->db->query($sql);
+    }
+
     private function writeLogKantor(string $action, string $description, array $oldData, array $newData): void
     {
         $this->ensureLogKantorTable();
@@ -60,6 +85,33 @@ class Doas extends BaseController
         $agent = $this->request->getUserAgent();
 
         $this->db->table('logkantor')->insert([
+            'action' => $action,
+            'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
+            'actorUsername' => $actor['username'] ?? $session->get('username'),
+            'actorName' => $actor['name'] ?? $session->get('name'),
+            'description' => $description,
+            'oldData' => !empty($oldData) ? json_encode($oldData, JSON_UNESCAPED_UNICODE) : null,
+            'newData' => !empty($newData) ? json_encode($newData, JSON_UNESCAPED_UNICODE) : null,
+            'ipAddress' => $this->request->getIPAddress(),
+            'userAgent' => $agent ? $agent->getAgentString() : null,
+        ]);
+    }
+
+    private function writeLogAbout(string $action, string $description, array $oldData, array $newData): void
+    {
+        $this->ensureLogAboutTable();
+
+        $session = session();
+        $actorUserId = $session->get('userId');
+        $actor = null;
+
+        if ($actorUserId) {
+            $actor = $this->userModel->where('userId', $actorUserId)->first();
+        }
+
+        $agent = $this->request->getUserAgent();
+
+        $this->db->table('logabout')->insert([
             'action' => $action,
             'actorUserId' => $actor['userId'] ?? $actorUserId ?? null,
             'actorUsername' => $actor['username'] ?? $session->get('username'),
@@ -127,6 +179,12 @@ class Doas extends BaseController
             'pdf'   => $namaPdf
         ];
 
+        $oldData = [
+            'judul' => $cek->judul ?? null,
+            'isi' => $cek->isi ?? null,
+            'pdf' => $cek->pdf ?? null,
+        ];
+
         // ======================
         // INSERT / UPDATE
         // ======================
@@ -152,6 +210,19 @@ class Doas extends BaseController
         // FLASH MESSAGE
         // ======================
         if ($result === 'sukses') {
+            $newData = [
+                'judul' => $data['judul'],
+                'isi' => $data['isi'],
+                'pdf' => $data['pdf'],
+            ];
+
+            $this->writeLogAbout(
+                $cek ? 'UPDATE_ABOUT' : 'CREATE_ABOUT',
+                $cek ? 'Mengubah konten About DOAS' : 'Membuat konten About DOAS',
+                $cek ? $oldData : [],
+                $newData
+            );
+
             return redirect()
                 ->to(site_url('apadoas'))
                 ->with('flashsuccess', 'Data DOAS berhasil disimpan');

@@ -68,6 +68,9 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->get('log_anggaran', 'Usnmanajemen::log_anggaran');
     $routes->post('log_anggaran/data', 'Usnmanajemen::logAnggaranData');
     $routes->get('log_anggaran/export', 'Usnmanajemen::exportLogAnggaran');
+    $routes->get('log_about', 'Usnmanajemen::log_about');
+    $routes->post('log_about/data', 'Usnmanajemen::logAboutData');
+    $routes->get('log_about/export', 'Usnmanajemen::exportLogAbout');
 
     $routes->get('kantor', 'Usnmanajemen::kantor');
     $routes->post('simpandoas', 'Doas::simpandoas');
