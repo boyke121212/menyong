@@ -1230,6 +1230,7 @@ class Cekdata extends BaseController
         foreach ($data as $row) {
             $result[] = [
                 'id'           => $row['id'],
+                'nama'      => $this->encryptAES($row['nama'] ?? '', $aesKey),
                 'tanggal'      => $this->encryptAES($row['tanggal'] ?? '', $aesKey),
                 'masuk'        => $this->encryptAES($row['masuk'] ?? '', $aesKey),
                 'pulang'       => $this->encryptAES($row['pulang'] ?? '', $aesKey),
