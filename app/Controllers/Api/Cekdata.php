@@ -1092,7 +1092,7 @@ class Cekdata extends BaseController
             ->findAll();
 
         foreach ($dataabsen as &$row) {
-            unset($row['bulan'], $row['nama'], $row['nip'], $row['userId']);
+            unset($row['bulan'],$row['userId']);
         }
         unset($row);
         // AES key untuk response ini
