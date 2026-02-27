@@ -101,7 +101,7 @@ class Berita extends BaseController
                 : "-";
 
             $pdf = $row['pdf']
-                ? "<a target='_blank' href='" . base_url('uploads/' . $row['pdf']) . "'>PDF</a>"
+                ? "<a target='_blank' href='" . site_url('berita/pdf/' . rawurlencode($row['pdf'])) . "'>PDF</a>"
                 : "-";
 
             $data[] = [
@@ -112,7 +112,7 @@ class Berita extends BaseController
                 $foto,
                 $pdf,
                 "<button class='btn-delete' data-id='" . $row['id'] . "'>Delete</button>",
-                "<button class='btn-edit' data-id='" . $row['id'] . "'>Edit</button>",
+                "<a class='btn-edit' href='" . site_url('berita/edit/' . $row['id']) . "'>Edit</a>",
 
             ];
         }
@@ -142,9 +142,21 @@ class Berita extends BaseController
             'csrfHash' => csrf_hash()
         ]);
     }
-    public function edit()
+    public function edit($id = null)
     {
-        $id = $this->request->getPost('id');
+        $id = $id ?? $this->request->getPost('id') ?? $this->request->getGet('id');
+        if (!$id && isset($this->request->uri)) {
+            $id = $this->request->uri->getSegment(3);
+        }
+
+        if (!$id) {
+            return redirect()->to(site_url('berita'))->with('flasherror', 'ID berita tidak ditemukan');
+        }
+
+        $item = $this->berita->find($id);
+        if (!$item) {
+            return redirect()->to(site_url('berita'))->with('flasherror', 'Data berita tidak ditemukan');
+        }
 
         $session  = session();
         $username = $session->get('username');
@@ -156,6 +168,87 @@ class Berita extends BaseController
             'role'    => $user['roleId'],
             'keadaan' => 'Home',
             'page'    => 'berita_edit',
+            'item'    => $item,
         ]);
+    }
+
+    public function update()
+    {
+        $id      = $this->request->getPost('id');
+        $judul   = $this->request->getPost('judul');
+        $isi     = $this->request->getPost('isi');
+        $tanggal = $this->request->getPost('tanggal');
+
+        $item = $this->berita->find($id);
+        if (!$item) {
+            return redirect()->to(site_url('berita'))->with('flasherror', 'Data berita tidak ditemukan');
+        }
+
+        $fotoName = $item['foto'] ?? null;
+        $pdfName  = $item['pdf'] ?? null;
+
+        $foto = $this->request->getFile('foto');
+        if ($foto && $foto->isValid() && !$foto->hasMoved()) {
+            $ext      = strtolower($foto->getExtension());
+            $allowed  = ['jpg', 'jpeg', 'png', 'webp'];
+            if (!in_array($ext, $allowed, true)) {
+                return redirect()->back()->withInput()->with('flasherror', 'Foto harus jpg, jpeg, png, atau webp');
+            }
+
+            $newFoto = $foto->getRandomName();
+            $foto->move(WRITEPATH . 'uploads/berita', $newFoto);
+
+            if (!empty($fotoName)) {
+                $oldFotoPath = WRITEPATH . 'uploads/berita/' . $fotoName;
+                if (is_file($oldFotoPath)) {
+                    unlink($oldFotoPath);
+                }
+            }
+            $fotoName = $newFoto;
+        }
+
+        $pdf = $this->request->getFile('pdf');
+        if ($pdf && $pdf->isValid() && !$pdf->hasMoved()) {
+            $mime = $pdf->getClientMimeType();
+            if ($mime !== 'application/pdf') {
+                return redirect()->back()->withInput()->with('flasherror', 'Dokumen harus format PDF');
+            }
+
+            $newPdf = $pdf->getRandomName();
+            $pdf->move(WRITEPATH . 'uploads/pdf', $newPdf);
+
+            if (!empty($pdfName)) {
+                $oldPdfPath = WRITEPATH . 'uploads/pdf/' . $pdfName;
+                if (is_file($oldPdfPath)) {
+                    unlink($oldPdfPath);
+                }
+            }
+            $pdfName = $newPdf;
+        }
+
+        $this->berita->update($id, [
+            'judul'   => $judul,
+            'isi'     => $isi,
+            'tanggal' => $tanggal,
+            'foto'    => $fotoName,
+            'pdf'     => $pdfName,
+        ]);
+
+        return redirect()->to(site_url('berita/edit/' . $id))->with('flashsuccess', 'Berita berhasil diperbarui');
+    }
+
+    public function tampilPdf($filename)
+    {
+        $filename = basename((string) $filename);
+        $path = WRITEPATH . 'uploads/pdf/' . $filename;
+
+        if (!$filename || !is_file($path)) {
+            throw new \CodeIgniter\Exceptions\PageNotFoundException('PDF tidak ditemukan');
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/pdf')
+            ->setHeader('Content-Disposition', 'inline; filename="' . $filename . '"')
+            ->setBody(file_get_contents($path));
     }
 }

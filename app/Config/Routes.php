@@ -83,7 +83,9 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
 
     // delete berita (AJAX + CSRF)
     $routes->post('berita/delete', 'Berita::delete');
-     $routes->post('berita/edit', 'Berita::edit');
+    $routes->get('berita/edit/(:num)', 'Berita::edit/$1');
+    $routes->post('berita/update', 'Berita::update');
+    $routes->get('berita/pdf/(:any)', 'Berita::tampilPdf/$1');
 });
 
 

@@ -100,21 +100,5 @@ $(document).on('click','.btn-delete',function(){
 
 });
 
-/* edit */
-$(document).on('click','.btn-edit',function(){
-
-    if(!confirm('Mau Edit data?')) return;
-
-    var data={id:$(this).data('id')};
-
-    data[$('#csrf_token').attr('name')] =
-        $('#csrf_token').val();
-
-    $.post("<?= base_url('berita/edit')?>",data,function(res){
-        $('#csrf_token').val(res.csrfHash);
-        table.ajax.reload(null,false);
-    });
-
-});
 });
 </script>
