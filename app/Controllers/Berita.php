@@ -107,7 +107,9 @@ public function getData()
             $row['tanggal'],
             $foto,
             $pdf,
-            "<button class='btn-delete' data-id='".$row['id']."'>Delete</button>"
+            "<button class='btn-delete' data-id='".$row['id']."'>Delete</button>",
+              "<button class='btn-edit' data-id='".$row['id']."'>Edit</button>",
+
         ];
     }
 
