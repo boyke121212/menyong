@@ -34,6 +34,21 @@ class Berita extends BaseController
         ]);
     }
 
+    public function add()
+    {
+        $session  = session();
+        $username = $session->get('username');
+        $user     = $this->dauo->where('username', $username)->first();
+
+        return view('app', [
+            'title'   => 'D.O.A.S - Tambah Berita',
+            'nama'    => $user['name'],
+            'role'    => $user['roleId'],
+            'keadaan' => 'Home',
+            'page'    => 'berita_add',
+        ]);
+    }
+
     /* ===============================
        DATATABLE SERVER SIDE
     =============================== */
@@ -141,6 +156,62 @@ class Berita extends BaseController
             'status' => true,
             'csrfHash' => csrf_hash()
         ]);
+    }
+
+    public function save()
+    {
+        $judul   = trim((string) $this->request->getPost('judul'));
+        $isi     = (string) $this->request->getPost('isi');
+        $tanggal = (string) $this->request->getPost('tanggal');
+
+        if ($judul === '' || trim(strip_tags($isi)) === '' || $tanggal === '') {
+            return redirect()->back()->withInput()->with('flasherror', 'Judul, isi, dan tanggal wajib diisi');
+        }
+
+        $fotoName = null;
+        $pdfName  = null;
+
+        $foto = $this->request->getFile('foto');
+        if ($foto && $foto->isValid() && !$foto->hasMoved()) {
+            $ext      = strtolower($foto->getExtension());
+            $allowed  = ['jpg', 'jpeg', 'png', 'webp'];
+            if (!in_array($ext, $allowed, true)) {
+                return redirect()->back()->withInput()->with('flasherror', 'Foto harus jpg, jpeg, png, atau webp');
+            }
+
+            $uploadFotoDir = WRITEPATH . 'uploads/berita';
+            if (!is_dir($uploadFotoDir)) {
+                mkdir($uploadFotoDir, 0755, true);
+            }
+
+            $fotoName = $foto->getRandomName();
+            $foto->move($uploadFotoDir, $fotoName);
+        }
+
+        $pdf = $this->request->getFile('pdf');
+        if ($pdf && $pdf->isValid() && !$pdf->hasMoved()) {
+            if ($pdf->getClientMimeType() !== 'application/pdf') {
+                return redirect()->back()->withInput()->with('flasherror', 'Dokumen harus format PDF');
+            }
+
+            $uploadPdfDir = WRITEPATH . 'uploads/pdf';
+            if (!is_dir($uploadPdfDir)) {
+                mkdir($uploadPdfDir, 0755, true);
+            }
+
+            $pdfName = $pdf->getRandomName();
+            $pdf->move($uploadPdfDir, $pdfName);
+        }
+
+        $this->berita->insert([
+            'judul'   => $judul,
+            'isi'     => $isi,
+            'tanggal' => $tanggal,
+            'foto'    => $fotoName,
+            'pdf'     => $pdfName,
+        ]);
+
+        return redirect()->to(site_url('berita'))->with('flashsuccess', 'Berita berhasil ditambahkan');
     }
     public function edit($id = null)
     {

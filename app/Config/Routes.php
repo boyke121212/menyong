@@ -77,6 +77,8 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->post('absensi/grafik', 'Absensi::grafik');
     // halaman utama berita
     $routes->get('berita', 'Berita::index');
+    $routes->get('berita/add', 'Berita::add');
+    $routes->post('berita/save', 'Berita::save');
 
     // datatables server side (AJAX + CSRF)
     $routes->post('berita/getData', 'Berita::getData');
