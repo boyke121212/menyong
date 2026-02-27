@@ -94,7 +94,7 @@ class Dashboard extends BaseController
         }
 
         $userTerakhir = $userModel
-            ->select('userId, username, name, roleId, subdit, createdDtm')
+            ->select('pangkat, username, name, jabatan, subdit, createdDtm')
             ->orderBy('createdDtm', 'DESC')
             ->orderBy('userId', 'DESC')
             ->findAll(5);
