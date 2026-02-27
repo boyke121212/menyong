@@ -735,8 +735,43 @@ class Usnmanajemen extends BaseController
                 continue;
             }
 
-            if ($name === '' || $nip === '' || $pangkat === '' || $jabatan === '' || $subdit === '') {
-                $errorRows[] = "Baris {$rowNumber}: semua field wajib diisi";
+            $isInfoRow = (
+                $nip === '' &&
+                $pangkat === '' &&
+                $jabatan === '' &&
+                $subdit === '' &&
+                $name !== ''
+            );
+            if ($isInfoRow) {
+                $nameLower = strtolower($name);
+                if (
+                    str_starts_with($nameLower, 'catatan') ||
+                    str_contains($nameLower, 'subdit valid') ||
+                    str_contains($nameLower, 'template import user')
+                ) {
+                    continue;
+                }
+            }
+
+            $missingFields = [];
+            if ($name === '') {
+                $missingFields[] = 'name';
+            }
+            if ($nip === '') {
+                $missingFields[] = 'nip';
+            }
+            if ($pangkat === '') {
+                $missingFields[] = 'pangkat';
+            }
+            if ($jabatan === '') {
+                $missingFields[] = 'jabatan';
+            }
+            if ($subdit === '') {
+                $missingFields[] = 'subdit';
+            }
+
+            if (!empty($missingFields)) {
+                $errorRows[] = "Baris {$rowNumber}: field kosong -> " . implode(', ', $missingFields);
                 continue;
             }
 

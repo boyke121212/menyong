@@ -141,13 +141,14 @@ $(function() {
 
     function canEditUser(viewerRole, targetRole) {
         if (viewerRole === 1) return true;
-        if (viewerRole === 2) return targetRole === 3;
+        if (viewerRole === 2) return targetRole === 3 || targetRole === 8;
+        if (viewerRole === 3) return targetRole === 8;
         return false;
     }
 
     function canDeleteUser(viewerRole, targetRole) {
         if (viewerRole === 1) return true;
-        if (viewerRole === 2) return targetRole === 3;
+        if (viewerRole === 2) return targetRole === 3 || targetRole === 8;
         if (viewerRole === 3) return targetRole === 8;
         return false;
     }
@@ -529,7 +530,7 @@ const viewerRoleForBulk = parseInt("<?= (int)($role ?? 0) ?>", 10);
 
 function canDeleteByRole(viewerRole, targetRole) {
     if (viewerRole === 1) return true;
-    if (viewerRole === 2) return targetRole === 3;
+    if (viewerRole === 2) return targetRole === 3 || targetRole === 8;
     if (viewerRole === 3) return targetRole === 8;
     return false;
 }
