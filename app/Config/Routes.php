@@ -86,8 +86,10 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->post('upload-photo', 'FileController::uploadPhoto');
     $routes->post('generate-pdf', 'FileController::generatePDF');
     $routes->get('dashboard', 'Dashboard::index');
-    $routes->post('export-excel', 'ExcelController::export');
-    $routes->post('import-excel', 'ExcelController::import');
+    $routes->get('usn/import-template', 'Usnmanajemen::downloadUserImportTemplate');
+    $routes->post('usn/import-excel', 'Usnmanajemen::importUserExcel');
+    // Backward compatibility
+    $routes->post('import-excel', 'Usnmanajemen::importUserExcel');
     $routes->get('absensi/laporan', 'Absensi::laporan');
     $routes->post('absensi/ajaxList', 'Absensi::ajaxList');
     $routes->post('absensi/ajaxRekap', 'Absensi::ajaxRekap');

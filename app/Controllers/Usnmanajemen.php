@@ -13,6 +13,7 @@ use App\Models\Dauo;
 use App\Services\UserService;
 use Config\Database;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -66,6 +67,24 @@ class Usnmanajemen extends BaseController
         }
 
         return [];
+    }
+
+    private function getAllowedSubditOptions(): array
+    {
+        return [
+            'Staff Pimpinan',
+            'Subdit 1',
+            'Subdit 2',
+            'Subdit 3',
+            'Subdit 4',
+            'Subdit 5',
+        ];
+    }
+
+    private function normalizeImportHeader(string $header): string
+    {
+        $header = strtolower(trim($header));
+        return preg_replace('/[^a-z0-9]/', '', $header) ?? '';
     }
 
     private function getCurrentActorRoleId(): int
@@ -525,6 +544,268 @@ class Usnmanajemen extends BaseController
 
         return redirect()->to('usnmanajemen')
             ->with('flashsuccess', 'User berhasil ditambahkan');
+    }
+
+    public function downloadUserImportTemplate()
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Template Import User');
+
+        $sheet->mergeCells('A1:E1');
+        $sheet->setCellValue('A1', 'TEMPLATE IMPORT USER (ROLE OTOMATIS = 8 / USER)');
+        $sheet->fromArray(['name', 'nip', 'pangkat', 'jabatan', 'subdit'], null, 'A3');
+        $sheet->fromArray(
+            ['Nama Contoh', '198801012010011001', 'Penata', 'Analis', 'Subdit 1'],
+            null,
+            'A4'
+        );
+        $sheet->fromArray(
+            ['Nama Contoh 2', '198905152011012002', 'Penata Tk.I', 'Operator', 'Subdit 2'],
+            null,
+            'A5'
+        );
+
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(13);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal('center');
+        $sheet->getStyle('A3:E3')->getFont()->setBold(true)->getColor()->setARGB('FFFFFFFF');
+        $sheet->getStyle('A3:E3')->getFill()
+            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+            ->getStartColor()->setARGB('FF1F4E78');
+        $sheet->getStyle('A3:E5')->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+
+        $sheet->getColumnDimension('A')->setWidth(28);
+        $sheet->getColumnDimension('B')->setWidth(24);
+        $sheet->getColumnDimension('C')->setWidth(20);
+        $sheet->getColumnDimension('D')->setWidth(24);
+        $sheet->getColumnDimension('E')->setWidth(18);
+        $sheet->freezePane('A4');
+
+        $sheet->setCellValue('A7', 'Subdit yang valid:');
+        $sheet->setCellValue('A8', implode(', ', $this->getAllowedSubditOptions()));
+        $sheet->setCellValue('A10', 'Catatan: kolom roleId tidak diperlukan. Semua hasil import akan otomatis roleId=8 (User).');
+        $sheet->getStyle('A10')->getFont()->setItalic(true);
+
+        $allowedSubdit = '"' . implode(',', $this->getAllowedSubditOptions()) . '"';
+        for ($row = 4; $row <= 2000; $row++) {
+            $validation = $sheet->getCell("E{$row}")->getDataValidation();
+            $validation->setType(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::TYPE_LIST);
+            $validation->setErrorStyle(\PhpOffice\PhpSpreadsheet\Cell\DataValidation::STYLE_STOP);
+            $validation->setAllowBlank(false);
+            $validation->setShowDropDown(true);
+            $validation->setShowInputMessage(true);
+            $validation->setShowErrorMessage(true);
+            $validation->setErrorTitle('Input tidak valid');
+            $validation->setError('Pilih nilai subdit dari daftar.');
+            $validation->setFormula1($allowedSubdit);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+        $filename = 'template_import_usn.xlsx';
+
+        ob_start();
+        $writer->save('php://output');
+        $excelOutput = ob_get_clean();
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+
+        return $this->response
+            ->setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"')
+            ->setBody($excelOutput ?: '');
+    }
+
+    public function importUserExcel()
+    {
+        $session = session();
+        $username = $session->get('username');
+        $actor = $this->dauo->where('username', $username)->first();
+        $actorRoleId = (int) ($actor['roleId'] ?? 0);
+        $allowedRoles = $this->getCreatableRolesByActor($actorRoleId);
+
+        if (empty($allowedRoles) || !array_key_exists(8, $allowedRoles)) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Anda tidak memiliki izin import user');
+        }
+
+        $file = $this->request->getFile('excel_file');
+        if (!$file || !$file->isValid()) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'File Excel tidak valid');
+        }
+
+        $ext = strtolower((string) $file->getExtension());
+        if (!in_array($ext, ['xlsx', 'xls', 'csv'], true)) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Format file harus xlsx, xls, atau csv');
+        }
+
+        try {
+            $spreadsheet = IOFactory::load($file->getTempName());
+        } catch (\Throwable $e) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Gagal membaca file Excel: ' . $e->getMessage());
+        }
+
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, true, true);
+
+        if (empty($rows) || count($rows) < 2) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'File Excel kosong atau tidak memiliki data');
+        }
+
+        $aliases = [
+            'name' => ['name', 'nama', 'namalengkap'],
+            'nip' => ['nip'],
+            'pangkat' => ['pangkat'],
+            'jabatan' => ['jabatan'],
+            'subdit' => ['subdit'],
+        ];
+
+        $headerMap = [];
+        $headerRowNumber = null;
+        foreach ($rows as $rowNumber => $rowData) {
+            $candidateMap = [];
+            foreach ($rowData as $col => $value) {
+                $normalized = $this->normalizeImportHeader((string) $value);
+                if ($normalized !== '') {
+                    $candidateMap[$normalized] = $col;
+                }
+            }
+
+            $hasName = isset($candidateMap['name']) || isset($candidateMap['nama']) || isset($candidateMap['namalengkap']);
+            if ($hasName && isset($candidateMap['nip']) && isset($candidateMap['pangkat']) && isset($candidateMap['jabatan']) && isset($candidateMap['subdit'])) {
+                $headerMap = $candidateMap;
+                $headerRowNumber = (int) $rowNumber;
+                break;
+            }
+        }
+
+        if ($headerRowNumber === null) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Header kolom tidak ditemukan. Gunakan kolom: name, nip, pangkat, jabatan, subdit');
+        }
+
+        $columnMap = [];
+        foreach ($aliases as $target => $variants) {
+            foreach ($variants as $variant) {
+                if (isset($headerMap[$variant])) {
+                    $columnMap[$target] = $headerMap[$variant];
+                    break;
+                }
+            }
+        }
+
+        $requiredColumns = ['name', 'nip', 'pangkat', 'jabatan', 'subdit'];
+        foreach ($requiredColumns as $required) {
+            if (!isset($columnMap[$required])) {
+                return redirect()
+                    ->to(site_url('usnmanajemen'))
+                    ->with('flasherror', 'Kolom wajib tidak ditemukan: ' . $required);
+            }
+        }
+
+        $allowedSubdit = $this->getAllowedSubditOptions();
+        $insertCount = 0;
+        $errorRows = [];
+        $seenNip = [];
+
+        foreach ($rows as $rowNumber => $row) {
+            if ($rowNumber <= $headerRowNumber) {
+                continue;
+            }
+
+            $name = trim((string) ($row[$columnMap['name']] ?? ''));
+            $nip = trim((string) ($row[$columnMap['nip']] ?? ''));
+            $pangkat = trim((string) ($row[$columnMap['pangkat']] ?? ''));
+            $jabatan = trim((string) ($row[$columnMap['jabatan']] ?? ''));
+            $subdit = trim((string) ($row[$columnMap['subdit']] ?? ''));
+
+            $isEmptyRow = $name === '' && $nip === '' && $pangkat === '' && $jabatan === '' && $subdit === '';
+            if ($isEmptyRow) {
+                continue;
+            }
+
+            if ($name === '' || $nip === '' || $pangkat === '' || $jabatan === '' || $subdit === '') {
+                $errorRows[] = "Baris {$rowNumber}: semua field wajib diisi";
+                continue;
+            }
+
+            if (!in_array($subdit, $allowedSubdit, true)) {
+                $errorRows[] = "Baris {$rowNumber}: subdit tidak valid ({$subdit})";
+                continue;
+            }
+
+            $nipKey = strtolower($nip);
+            if (isset($seenNip[$nipKey])) {
+                $errorRows[] = "Baris {$rowNumber}: NIP duplikat dalam file ({$nip})";
+                continue;
+            }
+
+            $existing = $this->userModel->where('nip', $nip)->first();
+
+            if ($existing) {
+                $errorRows[] = "Baris {$rowNumber}: NIP sudah ada ({$nip})";
+                continue;
+            }
+
+            $data = [
+                'username'   => $nip,
+                'password'   => password_hash($nip, PASSWORD_DEFAULT),
+                'name'       => $name,
+                'roleId'     => '8',
+                'nip'        => $nip,
+                'pangkat'    => $pangkat,
+                'jabatan'    => $jabatan,
+                'subdit'     => $subdit,
+                'status'     => 'belum',
+                'createdBy'  => (int) ($session->get('userId') ?? 0),
+                'createdDtm' => date('Y-m-d H:i:s'),
+            ];
+
+            $this->userModel->insert($data);
+            $insertCount++;
+            $seenNip[$nipKey] = true;
+        }
+
+        $this->writeUserManagementLog(
+            'IMPORT_USER_EXCEL',
+            null,
+            'Import user dari file Excel',
+            [
+                'inserted' => $insertCount,
+                'failed' => count($errorRows),
+                'errors' => array_slice($errorRows, 0, 20),
+            ]
+        );
+
+        $redirect = redirect()->to(site_url('usnmanajemen'));
+        if ($insertCount > 0) {
+            $redirect = $redirect->with('flashsuccess', "{$insertCount} user berhasil diimport");
+        }
+
+        if (!empty($errorRows)) {
+            $errorMessage = implode(' | ', array_slice($errorRows, 0, 5));
+            if (count($errorRows) > 5) {
+                $errorMessage .= ' | ...';
+            }
+            $redirect = $redirect->with('flasherror', "Sebagian data gagal: {$errorMessage}");
+        }
+
+        if ($insertCount === 0 && empty($errorRows)) {
+            $redirect = $redirect->with('flasherror', 'Tidak ada data yang diproses dari file');
+        }
+
+        return $redirect;
     }
 
 

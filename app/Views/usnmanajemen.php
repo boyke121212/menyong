@@ -14,7 +14,7 @@
                 </button>
                 <?php endif; ?>
 
-                <button class="btn-import">
+                <button type="button" class="btn-import" onclick="pilihFileImport()">
                     Import Excel
                 </button>
             </div>
@@ -64,6 +64,12 @@
         <!-- daftar userId yang dicentang (halaman ini saja) -->
         <input type="hidden" name="userIds" id="hapusUserIds">
 
+    </form>
+
+    <form id="importExcelForm" action="<?= site_url('usn/import-excel') ?>" method="post"
+        enctype="multipart/form-data" style="display:none;">
+        <?= csrf_field() ?>
+        <input type="file" name="excel_file" id="excelFileInput" accept=".xlsx,.xls,.csv">
     </form>
 
 </div>
@@ -133,6 +139,18 @@ function confirmLogout() {
 $(function() {
     const viewerRole = parseInt("<?= (int)($role ?? 0) ?>", 10);
 
+    function canEditUser(viewerRole, targetRole) {
+        if (viewerRole === 1) return true;
+        if (viewerRole === 2) return targetRole === 3;
+        return false;
+    }
+
+    function canDeleteUser(viewerRole, targetRole) {
+        if (viewerRole === 1) return true;
+        if (viewerRole === 2) return targetRole === 3;
+        if (viewerRole === 3) return targetRole === 8;
+        return false;
+    }
 
     $('#userTable').DataTable({
         responsive: true,
@@ -159,20 +177,15 @@ $(function() {
                 orderable: false,
                 searchable: false,
                 render: function(data, type, row) {
+                    const targetRole = parseInt(row.roleId, 10);
+                    const canDelete = canDeleteUser(viewerRole, targetRole);
 
-                    // roleId 1–7 TIDAK BOLEH dihapus
-                    if (parseInt(row.roleId, 10) >= 1 && parseInt(row.roleId, 10) <= 7) {
-                        return `<input type="checkbox"
-                           class="row-check"
-                           value="${data}"
-                           disabled
-                           title="User ini tidak boleh dihapus">`;
-                    }
-
-                    // roleId 8 (User) BOLEH
                     return `<input type="checkbox"
                        class="row-check"
-                       value="${data}">`;
+                       value="${data}"
+                       data-role="${targetRole}"
+                       ${canDelete ? '' : 'disabled'}
+                       title="${canDelete ? 'Pilih untuk hapus' : 'Anda tidak punya akses hapus user ini'}">`;
                 }
             }, {
                 data: "no",
@@ -217,22 +230,21 @@ $(function() {
                 searchable: false,
                 render: function(data, type, row) {
                     const targetRole = parseInt(row.roleId, 10);
-                    const isPeerRole2 = viewerRole === 2 && targetRole === 2;
-                    const isBlockedForRole3 = viewerRole === 3 && (targetRole === 2 || targetRole === 3);
-                    const hideAction = isPeerRole2 || isBlockedForRole3;
+                    const canEdit = canEditUser(viewerRole, targetRole);
+                    const canDelete = canDeleteUser(viewerRole, targetRole);
 
-                    const editButton = hideAction ? '' : `
+                    const editButton = canEdit ? `
                         <form method="get" action="<?= site_url('user/edit') ?>" style="display:inline;">
                             <input type="hidden" name="<?= csrf_token() ?>" value="<?= csrf_hash() ?>">
                             <input type="hidden" name="userId" value="${data}">
                             <button type="submit" class="btn-edit">Edit</button>
                         </form>
-                    `;
-                    const deleteButton = (targetRole === 1 || hideAction) ? '' : `
+                    ` : '';
+                    const deleteButton = canDelete ? `
                         <button class="btn-hapus" onclick="hapusUser(${data})">
                             Hapus
                         </button>
-                    `;
+                    ` : '';
 
                     return `
                     <div class="aksi-btn">
@@ -444,6 +456,17 @@ function tambahuser() {
     window.location.href = "<?= site_url('tambahuser') ?>"
 }
 
+function pilihFileImport() {
+    document.getElementById('excelFileInput').click();
+}
+
+document.getElementById('excelFileInput').addEventListener('change', function() {
+    if (!this.files || !this.files.length) {
+        return;
+    }
+    document.getElementById('importExcelForm').submit();
+});
+
 function hapusUser(id) {
     if (confirm('Yakin hapus user ini?')) {
         document.getElementById('hapusUserId').value = id;
@@ -502,8 +525,17 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script>
+const viewerRoleForBulk = parseInt("<?= (int)($role ?? 0) ?>", 10);
+
+function canDeleteByRole(viewerRole, targetRole) {
+    if (viewerRole === 1) return true;
+    if (viewerRole === 2) return targetRole === 3;
+    if (viewerRole === 3) return targetRole === 8;
+    return false;
+}
+
 $('#checkPage').on('change', function() {
-    $('.row-check').prop('checked', this.checked);
+    $('.row-check:not(:disabled)').prop('checked', this.checked);
 });
 
 function hapusTerpilih() {
@@ -517,15 +549,14 @@ function hapusTerpilih() {
         // OPTIONAL: extra safety, cek data-role
         const role = parseInt($(this).data('role'), 10);
 
-        // role 1–7 → SKIP
-        if (role >= 1 && role <= 7) return;
+        if (!canDeleteByRole(viewerRoleForBulk, role)) return;
 
         ids.push(this.value);
     });
 
 
     if (ids.length === 0) {
-        alert('Pilih data di halaman ini , kamu tidak bisa menghapus admin dengan checkbox');
+        alert('Pilih data di halaman ini sesuai akses role Anda');
         return;
     }
 
@@ -548,7 +579,7 @@ function updateBulkButton() {
 
 // check all halaman ini
 $('#checkPage').on('change', function() {
-    $('.row-check').prop('checked', this.checked);
+    $('.row-check:not(:disabled)').prop('checked', this.checked);
     updateBulkButton();
 });
 

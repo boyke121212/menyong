@@ -109,9 +109,18 @@
                             </li>
 
                             <li class="user-body">
-                                <?php if ($role == 1): ?>
-                                <p class="text-center">Admin Utama</p>
-                                <?php endif; ?>
+                                <?php
+                                $roleLabels = [
+                                    1 => 'Super Admin',
+                                    2 => 'Admin Utama',
+                                    3 => 'Admin User',
+                                    4 => 'Admin Berita',
+                                    5 => 'Admin Anggaran',
+                                    6 => 'Admin kantor',
+                                    7 => 'Admin laporan',
+                                ];
+                                ?>
+                                <p class="text-center"><?= esc($roleLabels[$role] ?? 'Role tidak dikenal') ?></p>
                             </li>
 
                             <li class="user-footer">
