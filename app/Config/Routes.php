@@ -18,7 +18,7 @@ if (file_exists(SYSTEMPATH . 'Config/Routes.php')) {
 // 🔒 WAJIB: MATIKAN AUTO ROUTING
 $routes->setAutoRoute(false);
 
-$routes->get('/', 'Boyke::login');
+$routes->get('/', 'Dashboard::index', ['filter' => 'auth']);
 
 $routes->get('asktoin', 'Boyke::asktoin');
 $routes->post('login', 'AuthController::login');
