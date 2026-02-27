@@ -1634,15 +1634,20 @@ class Cekdata extends BaseController
         $storedPassword = (string) ($user['password'] ?? '');
         $isOldPasswordValid = $storedPassword !== '' && password_verify($passwordlama, $storedPassword);
         if (!$isOldPasswordValid) {
-            return $this->response->setStatusCode(400)->setJSON([
-                'status' => 'error',
+            return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'status'  => 'ok',
                 'message' => 'Password lama tidak sesuai'
             ]);
+        
         }
 
         if (password_verify($passwordbaru, $storedPassword)) {
-            return $this->response->setStatusCode(400)->setJSON([
-                'status' => 'error',
+          return $this->response
+            ->setContentType('application/json')
+            ->setJSON([
+                'status'  => 'ok',
                 'message' => 'Password baru tidak boleh sama dengan password lama'
             ]);
         }
