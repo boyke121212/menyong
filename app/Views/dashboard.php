@@ -126,9 +126,8 @@ if (!empty($bulanAwal)) {
             <table border="1" cellpadding="5" class="anggaran-table">
                 <tr>
                     <th>User ID</th>
-                    <th>Username</th>
+                    <th>NIP</th>
                     <th>Nama</th>
-                    <th>Role</th>
                     <th>Subdit</th>
                     <th>Dibuat</th>
                 </tr>
@@ -137,7 +136,6 @@ if (!empty($bulanAwal)) {
                     <td><?= esc($u['userId'] ?? '-') ?></td>
                     <td><?= esc($u['username'] ?? '-') ?></td>
                     <td><?= esc($u['name'] ?? '-') ?></td>
-                    <td><?= esc($u['roleId'] ?? '-') ?></td>
                     <td><?= esc($u['subdit'] ?? '-') ?></td>
                     <td><?= esc($u['createdDtm'] ?? '-') ?></td>
                 </tr>
