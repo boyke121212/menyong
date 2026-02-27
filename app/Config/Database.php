@@ -28,7 +28,7 @@ class Database extends Config
         'DSN'          => '',
         'hostname'     => 'localhost',
         'username'     => 'ada deh',
-        'password'     => 'passwordkamu',
+        'password'     => 'passswordkamu',
         'database'     => 'database',
         'DBDriver'     => 'MySQLi',
         'DBPrefix'     => '',
