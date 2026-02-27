@@ -103,7 +103,7 @@ $(document).on('click','.btn-delete',function(){
 /* edit */
 $(document).on('click','.btn-edit',function(){
 
-    if(!confirm('Edit data?')) return;
+    if(!confirm('Mau Edit data?')) return;
 
     var data={id:$(this).data('id')};
 
