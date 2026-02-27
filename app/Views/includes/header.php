@@ -115,7 +115,7 @@
                             </li>
 
                             <li class="user-footer">
-                                <a href="#" class="btn btn-default btn-flat">Profile</a>
+                                <a href="<?= site_url('profile') ?>" class="btn btn-default btn-flat">Profile</a>
                                 <a href="<?= site_url('logout') ?>" class="btn btn-default btn-flat float-end"
                                     onclick="return confirm('Apakah Anda yakin ingin sign out?')">
                                     Sign out
@@ -153,49 +153,21 @@
                     <!--begin::Sidebar Menu-->
                     <ul class="nav sidebar-menu flex-column" data-lte-toggle="treeview" role="navigation"
                         aria-label="Main navigation" data-accordion="false" id="navigation">
+                        <?php $menuRole = (int) ($role ?? 0); ?>
+
+                        <?php if (in_array($menuRole, [1, 2], true)): ?>
                         <li class="nav-item menu-open">
                             <a href="<?= site_url('/') ?>" class="nav-link active">
                                 <i class="nav-icon bi bi-speedometer"></i>
-                                <p>
-                                    Dashboard
-
-                                </p>
+                                <p>Dashboard</p>
                             </a>
                         </li>
-
-
-                        <!-- 
-                        <li class="nav-item">
-                            <a href="#" class="nav-link">
-                                <i class="bi bi-file-medical-fill"></i>
-                                <p>
-                                    User Manajemen
-                                    <i class="nav-arrow bi bi-chevron-right"></i>
-                                </p>
-                            </a>
-                            <ul class="nav nav-treeview">
-
-                                <li class="nav-item">
-                                    <a href="./examples/lockscreen.html" class="nav-link">
-                                        <i class="nav-icon bi bi-circle"></i>
-                                        <p>Manajer</p>
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="" class="nav-link">
-                                        <i class="nav-icon bi bi-circle"></i>
-                                        <p>User</p>
-                                    </a>
-                                </li>
-                            </ul>
-                        </li> -->
                         <li class="nav-item">
                             <a href="<?= site_url('absensi/laporan') ?>" class="nav-link">
                                 <i class="nav-icon bi bi-box-seam-fill"></i>
                                 <p>Laporan</p>
                             </a>
                         </li>
-
                         <li class="nav-item">
                             <a href="<?= site_url('usnmanajemen') ?>" class="nav-link">
                                 <i class="bi bi-file-medical-fill"></i>
@@ -214,14 +186,18 @@
                                 <p>Set Data Kantor</p>
                             </a>
                         </li>
-
                         <li class="nav-item">
                             <a href="<?= site_url('berita') ?>" class="nav-link">
                                 <i class="nav-icon bi bi-patch-check-fill"></i>
                                 <p>Berita</p>
                             </a>
                         </li>
-
+                        <li class="nav-item">
+                            <a href="<?= site_url('anggaran') ?>" class="nav-link">
+                                <i class="bi bi-file-earmark-check"></i>
+                                <p>Anggaran</p>
+                            </a>
+                        </li>
                         <li class="nav-item">
                             <a href="#" class="nav-link">
                                 <i class="nav-icon bi bi-journal-text"></i>
@@ -276,12 +252,6 @@
                             </ul>
                         </li>
                         <li class="nav-item">
-                            <a href="<?= site_url('anggaran') ?>" class="nav-link">
-                                <i class="bi bi-file-earmark-check"></i>
-                                <p>Anggaran</p>
-                            </a>
-                        </li>
-                        <li class="nav-item">
                             <a href="./docs/license.html" class="nav-link">
                                 <i class="bi bi-hand-index-thumb"></i>
                                 <p>Reset TK</p>
@@ -293,6 +263,42 @@
                                 <p>Proses TK</p>
                             </a>
                         </li>
+                        <?php elseif ($menuRole === 3): ?>
+                        <li class="nav-item">
+                            <a href="<?= site_url('usnmanajemen') ?>" class="nav-link">
+                                <i class="bi bi-file-medical-fill"></i>
+                                <p>User Manajemen</p>
+                            </a>
+                        </li>
+                        <?php elseif ($menuRole === 4): ?>
+                        <li class="nav-item">
+                            <a href="<?= site_url('berita') ?>" class="nav-link">
+                                <i class="nav-icon bi bi-patch-check-fill"></i>
+                                <p>Berita</p>
+                            </a>
+                        </li>
+                        <?php elseif ($menuRole === 5): ?>
+                        <li class="nav-item">
+                            <a href="<?= site_url('anggaran') ?>" class="nav-link">
+                                <i class="bi bi-file-earmark-check"></i>
+                                <p>Anggaran</p>
+                            </a>
+                        </li>
+                        <?php elseif ($menuRole === 6): ?>
+                        <li class="nav-item">
+                            <a href="<?= site_url('kantor') ?>" class="nav-link">
+                                <i class="bi bi-geo-alt"></i>
+                                <p>Set Data Kantor</p>
+                            </a>
+                        </li>
+                        <?php elseif ($menuRole === 7): ?>
+                        <li class="nav-item">
+                            <a href="<?= site_url('absensi/laporan') ?>" class="nav-link">
+                                <i class="nav-icon bi bi-box-seam-fill"></i>
+                                <p>Laporan</p>
+                            </a>
+                        </li>
+                        <?php endif; ?>
                     </ul>
                     <!--end::Sidebar Menu-->
                 </nav>

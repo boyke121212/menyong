@@ -39,6 +39,9 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->post('updateuser', 'Usnmanajemen::updateuser');
     $routes->post('hapususer', 'Usnmanajemen::hapususer');
     $routes->post('hapususerbanyak', 'Usnmanajemen::hapususerbanyak');
+    $routes->get('profile', 'Usnmanajemen::profile');
+    $routes->post('profile/update', 'Usnmanajemen::updateProfile');
+    $routes->post('profile/password', 'Usnmanajemen::updatePassword');
     $routes->get('apadoas', 'Usnmanajemen::apadoas');
     $routes->get('login_log', 'Usnmanajemen::login_log');
     $routes->post('login_log/data', 'Usnmanajemen::datalog');

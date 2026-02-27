@@ -291,6 +291,150 @@ class Usnmanajemen extends BaseController
         ]);
     }
 
+    public function profile()
+    {
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        if (!$user) {
+            return redirect()->to(site_url('logout'));
+        }
+
+        return view('app', [
+            'title'       => 'D.O.A.S - Profile',
+            'nama'        => $user['name'],
+            'role'        => $user['roleId'],
+            'keadaan'     => 'Profile',
+            'profileUser' => $user,
+            'page'        => 'profile',
+        ]);
+    }
+
+    public function updateProfile()
+    {
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        if (!$user) {
+            return redirect()->to(site_url('logout'));
+        }
+
+        $name = trim((string) $this->request->getPost('name'));
+        $pangkat = trim((string) $this->request->getPost('pangkat'));
+        $jabatan = trim((string) $this->request->getPost('jabatan'));
+        $subdit = trim((string) $this->request->getPost('subdit'));
+
+        if ($name === '' || $pangkat === '' || $jabatan === '' || $subdit === '') {
+            return redirect()->back()
+                ->withInput()
+                ->with('flasherror', 'Nama, pangkat, jabatan, dan subdit wajib diisi');
+        }
+
+        $allowedSubdit = [
+            'Staff Pimpinan',
+            'Subdit 1',
+            'Subdit 2',
+            'Subdit 3',
+            'Subdit 4',
+            'Subdit 5',
+        ];
+        if (!in_array($subdit, $allowedSubdit, true)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('flasherror', 'Subdit tidak valid');
+        }
+
+        $oldData = [
+            'name' => $user['name'] ?? null,
+            'pangkat' => $user['pangkat'] ?? null,
+            'jabatan' => $user['jabatan'] ?? null,
+            'subdit' => $user['subdit'] ?? null,
+        ];
+
+        $newData = [
+            'name' => $name,
+            'pangkat' => $pangkat,
+            'jabatan' => $jabatan,
+            'subdit' => $subdit,
+        ];
+
+        $this->userModel->where('userId', $user['userId'])->update(null, $newData);
+        $session->set('name', $name);
+
+        $target = $this->userModel->where('userId', $user['userId'])->first();
+        $this->writeUserManagementLog(
+            'EDIT_PROFILE',
+            $target ?: $user,
+            'Mengubah profile sendiri',
+            [
+                'old' => $oldData,
+                'new' => $newData,
+            ]
+        );
+
+        return redirect()
+            ->to(site_url('profile'))
+            ->with('flashsuccess', 'Profile berhasil diperbarui');
+    }
+
+    public function updatePassword()
+    {
+        $session = session();
+        $username = $session->get('username');
+        $user = $this->dauo->where('username', $username)->first();
+
+        if (!$user) {
+            return redirect()->to(site_url('logout'));
+        }
+
+        $oldPassword = (string) $this->request->getPost('old_password');
+        $newPassword = (string) $this->request->getPost('new_password');
+        $confirmPassword = (string) $this->request->getPost('confirm_password');
+
+        if ($oldPassword === '' || $newPassword === '' || $confirmPassword === '') {
+            return redirect()->back()
+                ->with('flasherror', 'Semua field password wajib diisi');
+        }
+
+        if (!password_verify($oldPassword, (string) ($user['password'] ?? ''))) {
+            return redirect()->back()
+                ->with('flasherror', 'Password lama tidak sesuai');
+        }
+
+        if (strlen($newPassword) < 6) {
+            return redirect()->back()
+                ->with('flasherror', 'Password baru minimal 6 karakter');
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            return redirect()->back()
+                ->with('flasherror', 'Konfirmasi password tidak sama');
+        }
+
+        if (password_verify($newPassword, (string) ($user['password'] ?? ''))) {
+            return redirect()->back()
+                ->with('flasherror', 'Password baru harus berbeda dari password lama');
+        }
+
+        $this->userModel->where('userId', $user['userId'])->update(null, [
+            'password' => password_hash($newPassword, PASSWORD_DEFAULT),
+        ]);
+
+        $target = $this->userModel->where('userId', $user['userId'])->first();
+        $this->writeUserManagementLog(
+            'CHANGE_PASSWORD',
+            $target ?: $user,
+            'Mengubah password sendiri',
+            []
+        );
+
+        return redirect()
+            ->to(site_url('profile'))
+            ->with('flashsuccess', 'Password berhasil diubah');
+    }
+
     public function simpan()
     {
         $session = session();
