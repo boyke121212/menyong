@@ -64,8 +64,8 @@ class Deden extends Model
         }
 
         if ($viewerRoleId === 3) {
-            // Role 3 hanya bisa lihat role 8
-            $builder->where('roleId', 8);
+            // Role 3 bisa lihat semua kecuali role 1
+            $builder->where('roleId !=', 1);
             return;
         }
         // Role 1: tanpa filter (lihat semua)

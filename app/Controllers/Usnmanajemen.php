@@ -35,6 +35,57 @@ class Usnmanajemen extends BaseController
         $this->db = Database::connect();
     }
 
+    private function getRoleOptions(): array
+    {
+        return [
+            1 => 'Super Admin',
+            2 => 'Admin Utama',
+            3 => 'Admin User',
+            4 => 'Admin Berita',
+            5 => 'Admin Anggaran',
+            6 => 'Admin Kantor',
+            7 => 'Admin Laporan',
+            8 => 'User',
+        ];
+    }
+
+    private function getCreatableRolesByActor(int $actorRoleId): array
+    {
+        $allRoles = $this->getRoleOptions();
+
+        if ($actorRoleId === 1) {
+            return $allRoles;
+        }
+
+        if ($actorRoleId === 2) {
+            return array_intersect_key($allRoles, array_flip([3, 4, 5, 6, 7, 8]));
+        }
+
+        if ($actorRoleId === 3) {
+            return array_intersect_key($allRoles, array_flip([8]));
+        }
+
+        return [];
+    }
+
+    private function getCurrentActorRoleId(): int
+    {
+        $session = session();
+        $roleId = (int) ($session->get('role') ?? 0);
+
+        if ($roleId > 0) {
+            return $roleId;
+        }
+
+        $username = $session->get('username');
+        if (!$username) {
+            return 0;
+        }
+
+        $actor = $this->dauo->where('username', $username)->first();
+        return (int) ($actor['roleId'] ?? 0);
+    }
+
     private function ensureUserManagementLogTable(): void
     {
         $sql = "
@@ -221,18 +272,45 @@ class Usnmanajemen extends BaseController
         $session = session();
         $username = $session->get('username');
         $user = $this->dauo->where('username', $username)->first();
+        $actorRoleId = (int) ($user['roleId'] ?? 0);
+        $allowedRoles = $this->getCreatableRolesByActor($actorRoleId);
+
+        if (empty($allowedRoles)) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Anda tidak memiliki izin menambahkan user');
+        }
         // dd($datauser);
         return view('app', [
             'title'   => 'D.O.A.S - Tambah User',
             'nama'    => $user['name'],
             'role'    => $user['roleId'],
             'keadaan' => 'adduser',
+            'allowedRoles' => $allowedRoles,
             'page'    => 'tambahuser',
         ]);
     }
 
     public function simpan()
     {
+        $session = session();
+        $username = $session->get('username');
+        $actor = $this->dauo->where('username', $username)->first();
+        $actorRoleId = (int) ($actor['roleId'] ?? 0);
+        $allowedRoles = $this->getCreatableRolesByActor($actorRoleId);
+
+        if (empty($allowedRoles)) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Anda tidak memiliki izin menambahkan user');
+        }
+
+        $requestedRole = (int) $this->request->getPost('roleId');
+        if (!array_key_exists($requestedRole, $allowedRoles)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('flasherror', 'Role yang dipilih tidak diizinkan');
+        }
 
         // =========================
         // CEK DUPLIKAT DATA
@@ -275,7 +353,7 @@ class Usnmanajemen extends BaseController
                 PASSWORD_DEFAULT
             ),
             'name'       => $this->request->getPost('name'),
-            'roleId'     => "8",
+            'roleId'     => (string) $requestedRole,
             'nip'        => $this->request->getPost('nip'),
             'pangkat'        => $this->request->getPost('pangkat'),
             'jabatan'        => $this->request->getPost('jabatan'),
@@ -309,6 +387,27 @@ class Usnmanajemen extends BaseController
     public function edit()
     {
         $userId =  $this->request->getGet('userId');
+        $target = $this->userModel->where('userId', $userId)->first();
+        $actorRoleId = $this->getCurrentActorRoleId();
+        if (
+            $target &&
+            $actorRoleId === 2 &&
+            (int) ($target['roleId'] ?? 0) === 2
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Sesama Admin Utama tidak dapat saling edit');
+        }
+
+        if (
+            $target &&
+            $actorRoleId === 3 &&
+            in_array((int) ($target['roleId'] ?? 0), [2, 3], true)
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Admin User tidak diizinkan edit role 2/3');
+        }
 
         $userservice = new Userservice;
         $datauser = $userservice->getDataUser($userId);
@@ -336,6 +435,25 @@ class Usnmanajemen extends BaseController
         $userLama = $this->userModel->where('userId', $userId)->first();
         if (!$userLama) {
             throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+
+        $actorRoleId = $this->getCurrentActorRoleId();
+        if (
+            $actorRoleId === 2 &&
+            (int) ($userLama['roleId'] ?? 0) === 2
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Sesama Admin Utama tidak dapat saling edit');
+        }
+
+        if (
+            $actorRoleId === 3 &&
+            in_array((int) ($userLama['roleId'] ?? 0), [2, 3], true)
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Admin User tidak diizinkan edit role 2/3');
         }
 
         // =============================
@@ -486,6 +604,25 @@ class Usnmanajemen extends BaseController
             return redirect()
                 ->to(site_url('usnmanajemen'))
                 ->with('flasherror', 'User role Super Admin tidak dapat dihapus');
+        }
+
+        $actorRoleId = $this->getCurrentActorRoleId();
+        if (
+            $actorRoleId === 2 &&
+            (int) ($user['roleId'] ?? 0) === 2
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Sesama Admin Utama tidak dapat saling hapus');
+        }
+
+        if (
+            $actorRoleId === 3 &&
+            in_array((int) ($user['roleId'] ?? 0), [2, 3], true)
+        ) {
+            return redirect()
+                ->to(site_url('usnmanajemen'))
+                ->with('flasherror', 'Role Admin User tidak diizinkan hapus role 2/3');
         }
 
 

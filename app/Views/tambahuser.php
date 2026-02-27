@@ -50,6 +50,18 @@ helper('form');
                                 <option value="Subdit 5" <?= set_select('subdit', 'Subdit 5') ?>>Subdit 5</option>
                             </select>
                         </div>
+
+                        <div class="form-group">
+                            <label>Role</label>
+                            <select name="roleId" class="form-control" required>
+                                <option value="">-- Pilih Role --</option>
+                                <?php foreach (($allowedRoles ?? []) as $roleId => $roleLabel): ?>
+                                <option value="<?= esc((string) $roleId) ?>" <?= set_select('roleId', (string) $roleId) ?>>
+                                    <?= esc($roleId . ' - ' . $roleLabel) ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                     </div>
 
                     <div class="box-footer">

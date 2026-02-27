@@ -8,9 +8,11 @@
 
 
             <div class="header-actions">
+                <?php if (in_array((int) ($role ?? 0), [1, 2, 3], true)): ?>
                 <button class="btn-add" onclick="tambahuser()">
                     + Tambah User
                 </button>
+                <?php endif; ?>
 
                 <button class="btn-import">
                     Import Excel
@@ -129,6 +131,7 @@ function confirmLogout() {
 <?php endif; ?>
 <script>
 $(function() {
+    const viewerRole = parseInt("<?= (int)($role ?? 0) ?>", 10);
 
 
     $('#userTable').DataTable({
@@ -198,12 +201,12 @@ $(function() {
                 render: function(data) {
                     const role = parseInt(data, 10);
                     if (role == 1) return "Super Admin";
-                    if (role == 2) return "Admin Pimpinan";
-                    if (role == 3) return "Admin Subdit1";
-                    if (role == 4) return "Admin Subdit2";
-                    if (role == 5) return "Admin Subdit3";
-                    if (role == 6) return "Admin Subdit4";
-                    if (role == 7) return "Admin Subdit5";
+                    if (role == 2) return "Admin Utama";
+                    if (role == 3) return "Admin User";
+                    if (role == 4) return "Admin Berita";
+                    if (role == 5) return "Admin Anggaran";
+                    if (role == 6) return "Admin Kantor";
+                    if (role == 7) return "Admin Laporan";
                     if (role == 8) return "User";
                     return "Unknown";
                 }
@@ -213,8 +216,19 @@ $(function() {
                 orderable: false,
                 searchable: false,
                 render: function(data, type, row) {
-                    const role = parseInt(row.roleId, 10);
-                    const deleteButton = role === 1 ? '' : `
+                    const targetRole = parseInt(row.roleId, 10);
+                    const isPeerRole2 = viewerRole === 2 && targetRole === 2;
+                    const isBlockedForRole3 = viewerRole === 3 && (targetRole === 2 || targetRole === 3);
+                    const hideAction = isPeerRole2 || isBlockedForRole3;
+
+                    const editButton = hideAction ? '' : `
+                        <form method="get" action="<?= site_url('user/edit') ?>" style="display:inline;">
+                            <input type="hidden" name="<?= csrf_token() ?>" value="<?= csrf_hash() ?>">
+                            <input type="hidden" name="userId" value="${data}">
+                            <button type="submit" class="btn-edit">Edit</button>
+                        </form>
+                    `;
+                    const deleteButton = (targetRole === 1 || hideAction) ? '' : `
                         <button class="btn-hapus" onclick="hapusUser(${data})">
                             Hapus
                         </button>
@@ -222,11 +236,7 @@ $(function() {
 
                     return `
                     <div class="aksi-btn">
-                        <form method="get" action="<?= site_url('user/edit') ?>" style="display:inline;">
-                <input type="hidden" name="<?= csrf_token() ?>" value="<?= csrf_hash() ?>">
-                <input type="hidden" name="userId" value="${data}">
-                <button type="submit" class="btn-edit">Edit</button>
-            </form>
+                        ${editButton}
                         ${deleteButton}
                         <button class="btn-warning" onclick="openLogoutModal(${data})">
                             Logout
