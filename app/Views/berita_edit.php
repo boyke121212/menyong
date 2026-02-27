@@ -3,11 +3,31 @@ $item = $item ?? [];
 $id = $item['id'] ?? '';
 $judul = old('judul', $item['judul'] ?? '');
 $isi = old('isi', $item['isi'] ?? '');
-$tanggalRaw = old('tanggal', $item['tanggal'] ?? '');
+$tanggalInput = old('tanggal');
+$tanggalDb = $item['tanggal'] ?? '';
+$tanggalRaw = ($tanggalInput !== null && $tanggalInput !== '') ? $tanggalInput : $tanggalDb;
 $tanggal = '';
+
 if (!empty($tanggalRaw)) {
-    $timestamp = strtotime($tanggalRaw);
-    $tanggal = $timestamp ? date('Y-m-d', $timestamp) : '';
+    // Sudah format HTML date
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalRaw)) {
+        $tanggal = $tanggalRaw;
+    }
+    // Format datetime SQL: YYYY-MM-DD HH:ii:ss
+    elseif (preg_match('/^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}$/', $tanggalRaw, $m)) {
+        $tanggal = $m[1];
+    }
+    // Format Indonesia: DD-MM-YYYY
+    elseif (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $tanggalRaw, $m)) {
+        $tanggal = $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    // Format Indonesia: DD/MM/YYYY
+    elseif (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $tanggalRaw, $m)) {
+        $tanggal = $m[3] . '-' . $m[2] . '-' . $m[1];
+    } else {
+        $timestamp = strtotime($tanggalRaw);
+        $tanggal = $timestamp ? date('Y-m-d', $timestamp) : '';
+    }
 }
 $foto = $item['foto'] ?? '';
 $pdf = $item['pdf'] ?? '';
@@ -45,29 +65,27 @@ $pdf = $item['pdf'] ?? '';
 
                         <div class="form-group">
                             <label>Upload Foto (opsional)</label>
-                            <input type="file" name="foto" class="form-control" accept="image/*">
+                            <input type="file" id="foto_input" name="foto" class="form-control" accept="image/*">
                             <small class="text-muted">Kosongkan jika tidak ingin ganti foto.</small>
-                            <?php if (!empty($foto)) : ?>
-                            <div style="margin-top:10px;">
-                                <img src="<?= site_url('tampilberita/' . rawurlencode($foto)) ?>" alt="Foto berita"
-                                    style="max-width:260px;height:auto;border:1px solid #ddd;padding:4px;">
+                            <div id="foto_preview_wrap" style="margin-top:10px;<?= empty($foto) ? 'display:none;' : '' ?>">
+                                <img id="foto_preview"
+                                    src="<?= !empty($foto) ? site_url('tampilberita/' . rawurlencode($foto)) : '' ?>"
+                                    alt="Foto berita" style="max-width:260px;height:auto;border:1px solid #ddd;padding:4px;">
                             </div>
-                            <?php endif; ?>
                         </div>
 
                         <div class="form-group">
                             <label>Upload PDF (opsional)</label>
-                            <input type="file" name="pdf" class="form-control" accept="application/pdf">
+                            <input type="file" id="pdf_input" name="pdf" class="form-control" accept="application/pdf">
                             <small class="text-muted">Kosongkan jika tidak ingin ganti PDF.</small>
                         </div>
 
-                        <?php if (!empty($pdf)) : ?>
-                        <div class="pdf-preview">
+                        <div id="pdf_preview_wrap" class="pdf-preview" style="<?= empty($pdf) ? 'display:none;' : '' ?>">
                             <label>Dokumen PDF Saat Ini</label>
-                            <iframe src="<?= site_url('berita/pdf/' . rawurlencode($pdf)) ?>" width="100%"
+                            <iframe id="pdf_preview"
+                                src="<?= !empty($pdf) ? site_url('berita/pdf/' . rawurlencode($pdf)) : '' ?>" width="100%"
                                 height="520"></iframe>
                         </div>
-                        <?php endif; ?>
                     </div>
 
                     <div class="box-footer">
@@ -103,6 +121,40 @@ if (typeof tinymce !== 'undefined') {
         branding: false
     });
 }
+
+(function() {
+    var fotoInput = document.getElementById('foto_input');
+    var fotoPreview = document.getElementById('foto_preview');
+    var fotoWrap = document.getElementById('foto_preview_wrap');
+
+    var pdfInput = document.getElementById('pdf_input');
+    var pdfPreview = document.getElementById('pdf_preview');
+    var pdfWrap = document.getElementById('pdf_preview_wrap');
+    var pdfObjectUrl = null;
+
+    if (fotoInput) {
+        fotoInput.addEventListener('change', function(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            var url = URL.createObjectURL(file);
+            fotoPreview.src = url;
+            fotoWrap.style.display = 'block';
+        });
+    }
+
+    if (pdfInput) {
+        pdfInput.addEventListener('change', function(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            if (pdfObjectUrl) {
+                URL.revokeObjectURL(pdfObjectUrl);
+            }
+            pdfObjectUrl = URL.createObjectURL(file);
+            pdfPreview.src = pdfObjectUrl;
+            pdfWrap.style.display = 'block';
+        });
+    }
+})();
 </script>
 
 <style>

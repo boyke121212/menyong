@@ -8,6 +8,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Chart\Chart;
 use PhpOffice\PhpSpreadsheet\Chart\DataSeries;
 use PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues;
@@ -19,6 +20,62 @@ use App\Models\Dauo;
 
 class Absensi extends BaseController
 {
+    private array $absensiFields = [
+        'id',
+        'userId',
+        'masuk',
+        'pulang',
+        'keterangan',
+        'latitude',
+        'longitude',
+        'foto',
+        'foto2',
+        'tanggal',
+        'selesai',
+        'nama',
+        'jabatan',
+        'subdit',
+        'pangkat',
+        'nip',
+        'ketam',
+        'latpulang',
+        'lonpulang',
+        'fotopulang2',
+        'fotopulang',
+        'statuspulang',
+        'statusmasuk',
+        'ketpul',
+        'sudahkah',
+    ];
+
+    private array $fieldLabels = [
+        'id' => 'ID',
+        'userId' => 'User ID',
+        'masuk' => 'Masuk',
+        'pulang' => 'Pulang',
+        'keterangan' => 'Keterangan',
+        'latitude' => 'Latitude',
+        'longitude' => 'Longitude',
+        'foto' => 'Foto',
+        'foto2' => 'Foto2',
+        'tanggal' => 'Tanggal',
+        'selesai' => 'Selesai',
+        'nama' => 'Nama',
+        'jabatan' => 'Jabatan',
+        'subdit' => 'Subdit',
+        'pangkat' => 'Pangkat',
+        'nip' => 'NIP',
+        'ketam' => 'Ketam',
+        'latpulang' => 'Lat Pulang',
+        'lonpulang' => 'Lon Pulang',
+        'fotopulang2' => 'Foto Pulang 2',
+        'fotopulang' => 'Foto Pulang',
+        'statuspulang' => 'Status Pulang',
+        'statusmasuk' => 'Status Masuk',
+        'ketpul' => 'Ket Pul',
+        'sudahkah' => 'Sudahkah',
+    ];
+
     public function __construct()
     {
         $this->dauo = new Dauo();
@@ -31,22 +88,30 @@ class Absensi extends BaseController
 
         $user = $this->dauo->where('username', $username)->first();
 
-        // Hardcode daftar subdit (tidak query database)
-        $subditList = [
-            'SUBDIT 1',
-            'SUBDIT 2',
-            'SUBDIT 3',
-            'SUBDIT 4',
-            'SUBDIT 5',
-            'STAFF PIMPINAN'
-        ];
+        $model = new AbsensiModel();
+
+        $subditRows = $model->builder()
+            ->select('subdit')
+            ->where('subdit IS NOT NULL')
+            ->where("TRIM(subdit) !=", '')
+            ->groupBy('subdit')
+            ->orderBy('subdit', 'ASC')
+            ->get()
+            ->getResultArray();
+
+        $subditList = array_map(static fn($r) => $r['subdit'], $subditRows);
+
+        $defaultFields = array_keys($this->fieldLabels);
 
         return view('app', [
-            'title'   => 'D.O.A.S - Edit User',
+            'title'   => 'D.O.A.S - Laporan Absensi',
             'nama'    => $user['name'],
             'role'    => $user['roleId'],
-            'keadaan' => 'Edit',
+            'keadaan' => 'Laporan Absensi',
             'subditList' => $subditList,
+            'keteranganList' => ['DL', 'DIK', 'SAKIT', 'CUTI', 'BKO'],
+            'fieldLabels' => $this->fieldLabels,
+            'defaultFields' => $defaultFields,
             'page'    => 'laporan_absensi'
         ]);
     }
@@ -71,29 +136,34 @@ class Absensi extends BaseController
             $builder->where('keterangan', $keterangan);
         }
 
-        // SEARCH SEMUA FIELD
+        // SEARCH SEMUA FIELD BARU
         if ($searchValue) {
-            $builder->groupStart()
-                ->like('userId', $searchValue)
-                ->orLike('masuk', $searchValue)
-                ->orLike('pulang', $searchValue)
-                ->orLike('keterangan', $searchValue)
-                ->orLike('latitude', $searchValue)
-                ->orLike('longitude', $searchValue)
-                ->orLike('tanggal', $searchValue)
-                ->orLike('selesai', $searchValue)
-                ->orLike('nama', $searchValue)
-                ->orLike('namapimpinan', $searchValue)
-                ->orLike('jabatan', $searchValue)
-                ->orLike('subdit', $searchValue)
-                ->orLike('pangkat', $searchValue)
-                ->orLike('nip', $searchValue)
-                ->orLike('bulan', $searchValue)
-                ->orLike('tipeizin', $searchValue)
-                ->groupEnd();
+            $builder->groupStart();
+            foreach ($this->absensiFields as $i => $field) {
+                if ($i === 0) {
+                    $builder->like($field, $searchValue);
+                } else {
+                    $builder->orLike($field, $searchValue);
+                }
+            }
+            $builder->groupEnd();
         }
 
         return $builder;
+    }
+
+    private function getSelectedFields(): array
+    {
+        $selected = $this->request->getPost('selected_fields');
+
+        if (!is_array($selected) || empty($selected)) {
+            return array_keys($this->fieldLabels);
+        }
+
+        $allowed = array_keys($this->fieldLabels);
+        $selected = array_values(array_intersect($selected, $allowed));
+
+        return empty($selected) ? $allowed : $selected;
     }
 
 
@@ -116,9 +186,15 @@ class Absensi extends BaseController
         $length = $this->request->getPost('length');
         $start  = $this->request->getPost('start');
 
+        $selectedFields = $this->getSelectedFields();
+
+        $selectFields = array_values(array_unique(array_merge(['id'], $selectedFields)));
+
         $data = $builder
+            ->select(implode(',', $selectFields))
             ->limit($length, $start)
             ->orderBy('tanggal', 'DESC')
+            ->orderBy('id', 'DESC')
             ->get()
             ->getResultArray();
 
@@ -126,22 +202,11 @@ class Absensi extends BaseController
         $no = $start + 1;
 
         foreach ($data as $r) {
-            $rows[] = [
-                "no" => $no++,
-                "nama" => $r['nama'],
-                "nip" => $r['nip'],
-                "subdit" => $r['subdit'],
-                "tanggal" => $r['tanggal'],
-                "keterangan" => $r['keterangan'],
-                "masuk" => $r['masuk'],
-                "pulang" => $r['pulang'],
-                "jabatan" => $r['jabatan'],
-                "pangkat" => $r['pangkat'],
-                "tipeizin" => $r['tipeizin'],
-                "namapimpinan" => $r['namapimpinan'],
-                "pangkatpimpinan" => $r['pangkatpimpinan'],
-                "jabatanpimpinan" => $r['jabatanpimpinan']
-            ];
+            $row = ["no" => $no++];
+            foreach ($selectedFields as $field) {
+                $row[$field] = $r[$field] ?? '';
+            }
+            $rows[] = $row;
         }
 
 
@@ -198,7 +263,7 @@ class Absensi extends BaseController
 
         $result = $builder->get()->getResultArray();
 
-        $jenis = ['HADIR', 'TERLAMBAT', 'TK', 'LD', 'CUTI', 'DIK', 'BKO', 'DINAS', 'SAKIT', 'IZIN'];
+        $jenis = ['DL', 'DIK', 'SAKIT', 'CUTI', 'BKO'];
 
         $rekap = array_fill_keys($jenis, 0);
 
@@ -221,6 +286,7 @@ class Absensi extends BaseController
         $dari        = $this->request->getPost('dari');
         $sampai      = $this->request->getPost('sampai');
         $keterangan  = $this->request->getPost('keterangan');
+        $selectedFields = $this->getSelectedFields();
 
         $builder = $db->table('absensi');
 
@@ -238,23 +304,18 @@ class Absensi extends BaseController
             $builder->where('keterangan', $keterangan);
         }
 
-        $data = $builder->orderBy('tanggal', 'DESC')->get()->getResultArray();
+        $selectFields = array_values(array_unique(array_merge(['id'], $selectedFields)));
+        $data = $builder
+            ->select(implode(',', $selectFields))
+            ->orderBy('tanggal', 'DESC')
+            ->orderBy('id', 'DESC')
+            ->get()
+            ->getResultArray();
 
         // =========================
         // HITUNG REKAP
         // =========================
-        $allJenis = [
-            'HADIR',
-            'TERLAMBAT',
-            'TK',
-            'LD',
-            'CUTI',
-            'DIK',
-            'BKO',
-            'DINAS',
-            'SAKIT',
-            'IZIN'
-        ];
+        $allJenis = ['DL', 'DIK', 'SAKIT', 'CUTI', 'BKO'];
 
         if ($keterangan) {
             $rekapJenis = [$keterangan => 0];
@@ -263,8 +324,9 @@ class Absensi extends BaseController
         }
 
         foreach ($data as $d) {
-            if (isset($rekapJenis[$d['keterangan']])) {
-                $rekapJenis[$d['keterangan']]++;
+            $jenis = $d['keterangan'] ?? '';
+            if (isset($rekapJenis[$jenis])) {
+                $rekapJenis[$jenis]++;
             }
         }
 
@@ -317,59 +379,75 @@ class Absensi extends BaseController
         // HEADER TABLE
         // =========================
         $headerRow = 5;
+        $lastDataCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(count($selectedFields), 1));
 
-        $headers = [
-            'A' => 'Nama',
-            'B' => 'NIP',
-            'C' => 'Subdit',
-            'D' => 'Tanggal',
-            'E' => 'Keterangan',
-            'F' => 'Masuk',
-            'G' => 'Pulang',
-            'H' => 'Tipe Izin',
-            'I' => 'Nama Pimpinan',
-            'J' => 'Pangkat Pimpinan',
-            'K' => 'Jabatan Pimpinan',
-            'L' => 'Keterangan Tambahan',
-
-        ];
-
-        foreach ($headers as $col => $text) {
-            $sheet->setCellValue($col . $headerRow, $text);
-            $sheet->getStyle($col . $headerRow)->getFont()->setBold(true);
-            $sheet->getStyle($col . $headerRow)->getAlignment()
-                ->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $col = 'A';
+        foreach ($selectedFields as $field) {
+            $sheet->setCellValue($col . $headerRow, $this->fieldLabels[$field] ?? $field);
+            $col++;
         }
+
+        // style header tabel
+        $sheet->getStyle("A{$headerRow}:{$lastDataCol}{$headerRow}")->applyFromArray([
+            'font' => [
+                'bold' => true,
+                'color' => ['rgb' => 'FFFFFF'],
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '1F4E78'],
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ],
+            ],
+        ]);
 
         // DATA
         $row = $headerRow + 1;
 
         foreach ($data as $d) {
-            $sheet->setCellValue('A' . $row, $d['nama']);
-            $sheet->setCellValue('B' . $row, $d['nip']);
-            $sheet->setCellValue('C' . $row, $d['subdit']);
-            $sheet->setCellValue('D' . $row, $d['tanggal']);
-            $sheet->setCellValue('E' . $row, $d['keterangan']);
-            $sheet->setCellValue('F' . $row, $d['masuk']);
-            $sheet->setCellValue('G' . $row, $d['pulang']);
-            $sheet->setCellValue('H' . $row, $d['tipeizin']);
-            $sheet->setCellValue('I' . $row, $d['namapimpinan']);
-            $sheet->setCellValue('J' . $row, $d['pangkatpimpinan']);
-            $sheet->setCellValue('K' . $row, $d['jabatanpimpinan']);
-            $sheet->setCellValue('L' . $row, $d['ketam']);
+            $col = 'A';
+            foreach ($selectedFields as $field) {
+                $sheet->setCellValue($col . $row, (string) ($d[$field] ?? ''));
+                $col++;
+            }
             $row++;
         }
 
-        // BORDER
+        // BORDER + alignment isi tabel
         if ($row > $headerRow + 1) {
-            $sheet->getStyle("A{$headerRow}:L" . ($row - 1))
-                ->getBorders()->getAllBorders()
-                ->setBorderStyle(Border::BORDER_THIN);
+            $sheet->getStyle("A" . ($headerRow + 1) . ":{$lastDataCol}" . ($row - 1))->applyFromArray([
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000'],
+                    ],
+                ],
+                'alignment' => [
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+            ]);
         }
 
         // TOTAL DATA
-        $sheet->setCellValue('E' . ($row + 1), 'TOTAL DATA');
-        $sheet->setCellValue('F' . ($row + 1), count($data));
+        $sheet->setCellValue('A' . ($row + 1), 'TOTAL DATA');
+        $sheet->setCellValue('B' . ($row + 1), count($data));
+        $sheet->getStyle('A' . ($row + 1) . ':B' . ($row + 1))->applyFromArray([
+            'font' => ['bold' => true],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ],
+            ],
+        ]);
 
         // =========================
         // REKAP
@@ -384,6 +462,16 @@ class Absensi extends BaseController
             $sheet->setCellValue('A' . $rekapRow, $jenis);
             $sheet->setCellValue('B' . $rekapRow, $jumlah);
             $rekapRow++;
+        }
+        if ($rekapRow > $rekapStart + 1) {
+            $sheet->getStyle("A{$rekapStart}:B" . ($rekapRow - 1))->applyFromArray([
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['rgb' => '000000'],
+                    ],
+                ],
+            ]);
         }
 
         // =========================
@@ -436,7 +524,11 @@ class Absensi extends BaseController
         $sheet->addChart($chart);
 
         // AUTOSIZE
-        foreach (range('A', 'L') as $col) {
+        $sheet->freezePane('A6');
+        $sheet->setAutoFilter("A{$headerRow}:{$lastDataCol}{$headerRow}");
+
+        $lastDataCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(count($selectedFields), 2));
+        foreach (range('A', $lastDataCol) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
