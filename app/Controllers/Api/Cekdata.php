@@ -8,6 +8,8 @@ use App\Models\Dauo;
 use App\Models\BeritaModel;
 use App\Models\AbsensiModel;
 use App\Models\Berita;
+use App\Models\AnggaranDetailModel;
+use App\Models\TahunAnggaranModel;
 use Config\Services;
 use App\Services\LoginAuditService;
 use App\Services\AppServices;
@@ -177,6 +179,11 @@ class Cekdata extends BaseController
 
         // Generate AES key (per session)
         $aesKey = bin2hex(random_bytes(32)); // 32 hex (AES-256)
+        $tahunReq = $this->request->getPost('tahun')
+            ?? $this->request->getGet('tahun')
+            ?? $this->request->getPost('tahun_anggaran')
+            ?? $this->request->getGet('tahun_anggaran');
+        $dashboard = $this->buildDashboardPayload($tahunReq);
 
         // Enkripsi nama user
         $encryptedName = $this->encryptAES($user['name'], $aesKey);
@@ -210,8 +217,108 @@ class Cekdata extends BaseController
                 'status'  => 'ok',
                 'aes_key' => $aesKey,
                 'name' => $encryptedName,
-                'berita'  => $berita
+                'berita'  => $berita,
+                'dashboard' => $dashboard
             ]);
+    }
+
+    private function buildDashboardPayload($requestedTahun = null): array
+    {
+        $tahunModel = new TahunAnggaranModel();
+        $detailModel = new AnggaranDetailModel();
+        $userModel = new Deden();
+
+        $tahunAktif = is_numeric($requestedTahun) ? (int) $requestedTahun : null;
+
+        if ($tahunAktif === null) {
+            $tahunSekarang = (int) date('Y');
+            $cekSekarang = $detailModel->where('tahun', $tahunSekarang)->countAllResults();
+            if ($cekSekarang > 0) {
+                $tahunAktif = $tahunSekarang;
+            }
+        }
+
+        if ($tahunAktif === null) {
+            $tahunTerbaru = $detailModel->builder()
+                ->select('tahun')
+                ->groupBy('tahun')
+                ->orderBy('tahun', 'DESC')
+                ->limit(1)
+                ->get()
+                ->getRowArray();
+
+            if (!empty($tahunTerbaru['tahun']) && is_numeric(trim((string) $tahunTerbaru['tahun']))) {
+                $tahunAktif = (int) trim((string) $tahunTerbaru['tahun']);
+            }
+        }
+
+        $bulanAwal = 1;
+        if ($tahunAktif !== null) {
+            $tahunAktifRow = $tahunModel->where('tahun', $tahunAktif)->first();
+            if (!empty($tahunAktifRow['bulan_awal']) && (int) $tahunAktifRow['bulan_awal'] >= 1 && (int) $tahunAktifRow['bulan_awal'] <= 12) {
+                $bulanAwal = (int) $tahunAktifRow['bulan_awal'];
+            }
+        }
+
+        $rows = [];
+        if ($tahunAktif !== null) {
+            $rows = $detailModel->where('tahun', $tahunAktif)->findAll();
+        }
+
+        $dataMap = [];
+        $summarySubdit = [];
+        $grafikSubdit = [];
+
+        foreach ($rows as $r) {
+            $subdit = $r['subdit'];
+            $bulan = (int) ($r['bulan'] ?? 0);
+            $diajukan = (int) ($r['anggaran_diajukan'] ?? 0);
+            $terserap = (int) ($r['anggaran_terserap'] ?? 0);
+
+            $dataMap[$subdit][$bulan] = $r;
+
+            if (!isset($summarySubdit[$subdit])) {
+                $summarySubdit[$subdit] = [
+                    'diajukan' => 0,
+                    'terserap' => 0,
+                    'persen' => 0
+                ];
+            }
+
+            if ($summarySubdit[$subdit]['diajukan'] === 0 && $diajukan > 0) {
+                $summarySubdit[$subdit]['diajukan'] = $diajukan;
+            }
+
+            $summarySubdit[$subdit]['terserap'] += $terserap;
+
+            $persenBulanan = 0;
+            if ($diajukan > 0) {
+                $persenBulanan = round((($terserap / $diajukan) * 100), 2);
+            }
+
+            $grafikSubdit[$subdit][$bulan] = $persenBulanan;
+        }
+
+        foreach ($summarySubdit as $subdit => $summary) {
+            $summarySubdit[$subdit]['persen'] = $summary['diajukan'] > 0
+                ? round(($summary['terserap'] / $summary['diajukan']) * 100, 2)
+                : 0;
+        }
+
+        $userTerakhir = $userModel
+            ->select('pangkat, username, name, jabatan, subdit, createdDtm')
+            ->orderBy('createdDtm', 'DESC')
+            ->orderBy('userId', 'DESC')
+            ->findAll(5);
+
+        return [
+            'tahunAktif' => $tahunAktif,
+            'bulanAwal' => $bulanAwal,
+            'dataMap' => $dataMap,
+            'summarySubdit' => $summarySubdit,
+            'grafikSubdit' => $grafikSubdit,
+            'userTerakhir' => $userTerakhir,
+        ];
     }
 
     public function absen()
