@@ -1,6 +1,0 @@
-# Aktifkan RewriteEngine
-RewriteEngine On
-
-# Jika request bukan ke public, redirect ke public
-RewriteCond %{REQUEST_URI} !^/public/
-RewriteRule ^(.*)$ /public/$1 [L]
