@@ -12,6 +12,8 @@ class Auth extends ResourceController
     public function refreshToken()
     {
         try {
+            $algorithm = getenv('hash') ?: 'HS256';
+
             // 1. Ambil Authorization header
             $authHeader = $this->request->getHeaderLine('Authorization');
             if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
@@ -23,7 +25,7 @@ class Auth extends ResourceController
             // 2. Decode REFRESH TOKEN (JWT2)
             $payload = JWT::decode(
                 $refreshToken,
-                new Key(getenv('JWT2'), 'HS256')
+                new Key(getenv('JWT2'), $algorithm)
             );
 
             if (!isset($payload->uid)) {
@@ -37,7 +39,14 @@ class Auth extends ResourceController
             if (!$user || ($user['status'] ?? '') !== 'active') {
                 return $this->failUnauthorized('User tidak aktif');
             }
-            if ($refreshToken !==  $user['refresh_token']) {
+            $storedRefreshToken = (string) ($user['refresh_token'] ?? '');
+            $incomingRefreshTokenHash = hash('sha256', $refreshToken);
+            $isRefreshTokenMatch = $storedRefreshToken !== '' && (
+                hash_equals($storedRefreshToken, $incomingRefreshTokenHash)
+                || hash_equals($storedRefreshToken, $refreshToken) // backward compatibility token lama (raw)
+            );
+
+            if (!$isRefreshTokenMatch) {
                 return $this->failUnauthorized('Token sudah dicabut');
             }
 
@@ -59,32 +68,32 @@ class Auth extends ResourceController
             $accessPayload = [
                 'uid' => $user['userId'],
                 'iat' => $now,
-                'exp' => $now + (int) getenv('expire2') // access token (short)
+                'exp' => $now + (int) getenv('expire1') // access token (short)
             ];
 
             $newAccessToken = JWT::encode(
                 $accessPayload,
                 getenv('JWT1'),
-                'HS256'
+                $algorithm
             );
 
             // 6. Rotasi REFRESH TOKEN BARU (JWT2)
             $refreshPayload = [
                 'uid' => $user['userId'],
                 'iat' => $now,
-                'exp' => $now + (int) getenv('expire') // refresh token (long)
+                'exp' => $now + (int) getenv('expire2') // refresh token (long)
             ];
 
             $newRefreshToken = JWT::encode(
                 $refreshPayload,
                 getenv('JWT2'),
-                'HS256'
+                $algorithm
             );
 
             // 6.5 SIMPAN KE DATABASE (INI YANG KURANG)
             $deden->update($user['userId'], [
-                'access_token'  => $newAccessToken,
-                'refresh_token' => $newRefreshToken,
+                'access_token'  => hash('sha256', $newAccessToken),
+                'refresh_token' => hash('sha256', $newRefreshToken),
                 'device_hash'   => $deviceHash,
                 'app_signature' => $appSig
             ]);

@@ -24,11 +24,6 @@ $routes->get('asktoin', 'Boyke::asktoin');
 $routes->post('login', 'AuthController::login');
 
 
-$routes->get('testdb', function () {
-    return response()->setJSON(['ok' => true]);
-});
-
-
 $routes->group('/', ['filter' => 'auth'], function ($routes) {
     $routes->get('logout', 'Boyke::logout');
     $routes->get('lukisan/(:any)', 'Lukisan::show/$1');
@@ -137,7 +132,4 @@ $routes->group('api', ['filter' => 'mobileauth'], function ($routes) {
     $routes->get('media/berita/(:any)', 'Media::berita/$1');
     $routes->get('media/pdf/(:any)', 'Media::pdf/$1');
     $routes->get('media/absensi', 'Media::absensi');
-});
-$routes->get('tes', function () {
-    return 'ROUTE HIDUP';
 });

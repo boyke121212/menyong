@@ -22,10 +22,12 @@ class MobileFilter implements FilterInterface
         $token = trim(substr($authHeader, 7));
 
         try {
+            $algorithm = getenv('hash') ?: 'HS256';
+
             // 🔑 Decode ACCESS TOKEN
             $payload = JWT::decode(
                 $token,
-                new Key(getenv('JWT1'), 'HS256')
+                new Key(getenv('JWT1'), $algorithm)
             );
 
             if (!isset($payload->uid)) {
@@ -40,7 +42,14 @@ class MobileFilter implements FilterInterface
             }
 
             // ❌ TOKEN SUDAH DICABUT OLEH ADMIN
-            if (empty($user['access_token']) || $token !== $user['access_token']) {
+            $storedAccessToken = (string) ($user['access_token'] ?? '');
+            $incomingAccessTokenHash = hash('sha256', $token);
+            $isTokenMatch = $storedAccessToken !== '' && (
+                hash_equals($storedAccessToken, $incomingAccessTokenHash)
+                || hash_equals($storedAccessToken, $token) // backward compatibility token lama (raw)
+            );
+
+            if (!$isTokenMatch) {
                 return $this->unauthorized('Checking Device');
             }
 

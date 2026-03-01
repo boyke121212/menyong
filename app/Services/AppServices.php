@@ -46,29 +46,28 @@ class AppServices
     private function generateAccessToken(array $user): string
     {
         $now = time();
+        $algorithm = getenv('hash') ?: 'HS256';
 
         $payload = [
             'iat'  => $now,
-            'exp'  => $now + getenv('expire1'), // access token (1 jam)
+            'exp'  => $now + (int) getenv('expire1'), // access token (1 jam)
             'uid'  => $user['userId'],
-            'role' => $user['roleId'],
-            'type' => 'access',
         ];
 
-        return JWT::encode($payload, getenv('JWT1'), getenv('hash'));
+        return JWT::encode($payload, getenv('JWT1'), $algorithm);
     }
 
     private function generateRefreshToken(array $user): string
     {
         $now = time();
+        $algorithm = getenv('hash') ?: 'HS256';
 
         $payload = [
             'iat'  => $now,
-            'exp'  => $now + getenv('expire2'), // refresh token (7 hari)
+            'exp'  => $now + (int) getenv('expire2'), // refresh token (7 hari)
             'uid'  => $user['userId'],
-            'type' => 'refresh',
         ];
 
-        return JWT::encode($payload, getenv('JWT2'), getenv('hash'));
+        return JWT::encode($payload, getenv('JWT2'), $algorithm);
     }
 }

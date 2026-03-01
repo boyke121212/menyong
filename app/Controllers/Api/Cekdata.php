@@ -106,6 +106,8 @@ class Cekdata extends BaseController
         try {
             $authService = new AppServices();
             $tokens = $authService->login($username, $password);
+            $accessTokenHash = hash('sha256', $tokens['access_token']);
+            $refreshTokenHash = hash('sha256', $tokens['refresh_token']);
             // 🔹 Update token ke database
             $this->userModel
                 ->where('userId', $tokens['userId'])
@@ -113,8 +115,8 @@ class Cekdata extends BaseController
                     'status'        => 'active',
                     'app_signature'        => $app_signature,
                     'device_hash'        => $device_hash,
-                    'access_token'  => $tokens['access_token'],
-                    'refresh_token' => $tokens['refresh_token'],
+                    'access_token'  => $accessTokenHash,
+                    'refresh_token' => $refreshTokenHash,
                     'updatedDtm'    => date('Y-m-d H:i:s'),
                     'updatedBy'     => '1'
                 ])
