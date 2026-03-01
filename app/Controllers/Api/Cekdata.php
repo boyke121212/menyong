@@ -399,7 +399,8 @@ class Cekdata extends BaseController
                 return $this->handleAdl($uid, $user, $menu);
             case 'HADIR':
                 return $this->handleHadir($uid, $user);
-
+            case 'PULANG':
+                return $this->handlePulang($uid, $user);
             case 'TERLAMBAT':
                 return $this->handleTerlambat($uid, $user);
 
@@ -432,6 +433,140 @@ class Cekdata extends BaseController
     {
         return $this->handleHadirBase($uid, $user, false);
     }
+
+
+    private function handlePulang($uid, $user)
+    {
+        $db = \Config\Database::connect();
+
+        // ===== INPUT =====
+        $lat  = (float)$this->request->getPost('latitude');
+        $lon  = (float)$this->request->getPost('longitude');
+
+        $statusClient = strtoupper(
+            $this->request->getPost('statuspulang') ?? ''
+        );
+
+        $ketpul = trim($this->request->getPost('ketpul') ?? '');
+
+        if (!$lat || !$lon) {
+            return $this->error('Lokasi wajib');
+        }
+
+        // ===== FOTO =====
+        $foto1 = $this->request->getFile('foto1');
+        $foto2 = $this->request->getFile('foto2');
+
+        if (!$foto1 || !$foto1->isValid()) {
+            return $this->error('Foto pertama wajib');
+        }
+
+        if (!$foto2 || !$foto2->isValid()) {
+            return $this->error('Foto kedua wajib');
+        }
+
+        $allowedMime = ['image/jpeg', 'image/png', 'image/webp'];
+
+        if (
+            !in_array($foto1->getMimeType(), $allowedMime) ||
+            !in_array($foto2->getMimeType(), $allowedMime)
+        ) {
+            return $this->error('Format foto tidak valid');
+        }
+
+        // ===== CEK ABSEN MASUK =====
+        $tanggal = date('Y-m-d');
+        $now = new \DateTime();
+
+        $absenRows = $db->table('absensi')
+            ->where('userId', $uid)
+            ->where('tanggal', $tanggal)
+            ->get()
+            ->getResult();
+
+        $count = count($absenRows);
+
+        if ($count === 0) {
+            return $this->error('Data absen tidak ditemukan');
+        }
+
+        if ($count > 1) {
+            return $this->error('Data absen ganda, hubungi admin');
+        }
+
+        $absen = $absenRows[0];
+
+        if (!$absen) {
+            return $this->error('Data absen masuk tidak ditemukan');
+        }
+
+        if (!empty($absen->pulang)) {
+            return $this->error('Anda sudah absen pulang');
+        }
+
+        // ===== AMBIL JAM PULANG DARI LOKASI =====
+        $lokasi = $db->table('lokasi')
+            ->where('id', 1)
+            ->get()
+            ->getRow();
+
+        if (!$lokasi || empty($lokasi->pulang)) {
+            return $this->error('Jam pulang belum disetting');
+        }
+
+        $jamPulang = new \DateTime(
+            $tanggal . ' ' . $lokasi->pulang
+        );
+
+        $batasNormal = clone $jamPulang;
+        $batasNormal->modify('+5 minutes');
+
+        // ===== HITUNG STATUS PULANG DARI SERVER =====
+        if ($now < $jamPulang) {
+            $statusServer = 'PULANG CEPAT';
+        } elseif ($now <= $batasNormal) {
+            $statusServer = 'TEPAT WAKTU';
+        } else {
+            $statusServer = 'OVERTIME';
+        }
+
+        // ===== VALIDASI STATUS DARI CLIENT =====
+        if ($statusClient !== $statusServer) {
+            return $this->error(
+                "Status pulang tidak valid"
+            );
+        }
+
+        // ===== FOLDER FOTO =====
+        $folder = WRITEPATH . 'uploads/absensi/' . date('Y/m/d');
+
+        if (!is_dir($folder)) {
+            mkdir($folder, 0755, true);
+        }
+
+        $fotoName1 = $foto1->getRandomName();
+        $fotoName2 = $foto2->getRandomName();
+
+        $foto1->move($folder, $fotoName1);
+        $foto2->move($folder, $fotoName2);
+
+        // ===== UPDATE ABSENSI =====
+        $db->table('absensi')
+            ->where('id', $absen->id)
+            ->update([
+                'pulang'        => $now->format('H:i:s'),
+                'latpulang'     => $lat,
+                'lonpulang'     => $lon,
+                'fotopulang'    => $fotoName1,
+                'fotopulang2'   => $fotoName2,
+                'statuspulang'  => $statusServer,
+                'ketpul'        => $ketpul
+            ]);
+
+        return $this->success(
+            "Absen pulang berhasil ($statusServer)"
+        );
+    }
     private function handleAdl($uid, $user, $menu)
     {
         // ===== INPUT =====
@@ -445,6 +580,61 @@ class Cekdata extends BaseController
 
         if (empty($ketam)) {
             return $this->error('Alasan wajib diisi');
+        }
+
+        // ===== CEK / BUAT DATA CUTI (KHUSUS MENU CUTI) =====
+        if ($menu === 'CUTI') {
+
+            if (empty($ketam)) {
+                return $this->error('Jenis cuti wajib diisi');
+            }
+
+            $db = \Config\Database::connect();
+            $tahun = date('Y');
+
+            // cek data cuti user tahun ini
+            $cuti = $db->table('cuti')
+                ->where('userId', $uid)
+                ->where('tahun', $tahun)
+                ->where('jenis_cuti', $ketam)
+                ->get()
+                ->getRow();
+
+            // ===== JIKA BELUM ADA → BUAT OTOMATIS =====
+            if (!$cuti) {
+
+                $defaultCuti = [
+                    'Cuti Tahunan' => 12,
+                    'Cuti Istimewa' => 12,
+                    'Cuti Ibadah Keagamaan' => 12,
+                    'Cuti Melahirkan' => 9
+                ];
+
+                foreach ($defaultCuti as $jenis => $jatah) {
+                    $db->table('cuti')->insert([
+                        'userId'        => $uid,
+                        'tahun'         => $tahun,
+                        'jenis_cuti'    => $jenis,
+                        'jatah_cuti'    => $jatah,
+                        'cuti_terpakai' => 0
+                    ]);
+                }
+
+                // ambil lagi setelah dibuat
+                $cuti = $db->table('cuti')
+                    ->where('userId', $uid)
+                    ->where('tahun', $tahun)
+                    ->where('jenis_cuti', $ketam)
+                    ->get()
+                    ->getRow();
+            }
+
+            // ===== CEK SISA CUTI =====
+            $sisa = (int)$cuti->jatah_cuti - (int)$cuti->cuti_terpakai;
+
+            if ($sisa <= 0) {
+                return $this->error("Jatah cuti $menu sudah habis");
+            }
         }
 
         // ===== FOTO =====
@@ -585,6 +775,15 @@ class Cekdata extends BaseController
             'sudahkah'     => 'sudah'
         ]);
 
+        // ===== UPDATE JATAH CUTI =====
+        if ($menu === 'CUTI') {
+            $db->table('cuti')
+                ->where('userId', $uid)
+                ->where('tahun', date('Y'))
+                ->where('jenis_cuti', $ketam)
+                ->set('cuti_terpakai', 'cuti_terpakai+1', false)
+                ->update();
+        }
         return $this->success("Absen $menu berhasil ($statusMasuk)");
     }
 
@@ -1744,21 +1943,20 @@ class Cekdata extends BaseController
         $isOldPasswordValid = $storedPassword !== '' && password_verify($passwordlama, $storedPassword);
         if (!$isOldPasswordValid) {
             return $this->response
-            ->setContentType('application/json')
-            ->setJSON([
-                'status'  => 'ok',
-                'message' => 'Password lama tidak sesuai'
-            ]);
-        
+                ->setContentType('application/json')
+                ->setJSON([
+                    'status'  => 'ok',
+                    'message' => 'Password lama tidak sesuai'
+                ]);
         }
 
         if (password_verify($passwordbaru, $storedPassword)) {
-          return $this->response
-            ->setContentType('application/json')
-            ->setJSON([
-                'status'  => 'ok',
-                'message' => 'Password baru tidak boleh sama dengan password lama'
-            ]);
+            return $this->response
+                ->setContentType('application/json')
+                ->setJSON([
+                    'status'  => 'ok',
+                    'message' => 'Password baru tidak boleh sama dengan password lama'
+                ]);
         }
 
         $updated = $this->userModel->update($uid, [
