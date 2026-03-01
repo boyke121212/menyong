@@ -79,9 +79,6 @@ class Filters extends BaseFilters
             'csrf' => [
                 'except' => [
                     'api/*',
-                    'proketsi1',
-                    'proketsi2',
-                    'proketsi3',
                     'ajax/*',
                     'absensi/laporan',
                     'absensi/ajaxList',
