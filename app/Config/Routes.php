@@ -79,7 +79,6 @@ $routes->group('/', ['filter' => 'auth'], function ($routes) {
 
     $routes->get('tampilfoto/(:any)', 'Tampilfoto::show/$1');
     $routes->post('upload-photo', 'FileController::uploadPhoto');
-    $routes->post('generate-pdf', 'FileController::generatePDF');
     $routes->get('dashboard', 'Dashboard::index');
     $routes->get('usn/import-template', 'Usnmanajemen::downloadUserImportTemplate');
     $routes->post('usn/import-excel', 'Usnmanajemen::importUserExcel');
