@@ -66,6 +66,10 @@ class Cekdata extends BaseController
         if (!$clientIp) {
             $clientIp = $this->request->getIPAddress();
         }
+         if (!$device_hash) {
+             return $this->response->setStatusCode(400)
+                ->setJSON(['message' => 'Device hash wajib diisi']);
+        }
 
         // 🔐 CACHE KEY AMAN (TANPA KARAKTER TERLARANG)
         $key = 'login_' . hash('sha256', $clientIp . hash('sha256', $username));
