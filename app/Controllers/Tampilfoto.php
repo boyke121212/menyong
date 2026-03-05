@@ -7,6 +7,29 @@ use CodeIgniter\Exceptions\PageNotFoundException;
 
 class Tampilfoto extends Controller
 {
+    private function findAbsensiFile(string $filename): ?string
+    {
+        $baseDir = WRITEPATH . 'uploads/absensi';
+        if (!is_dir($baseDir)) {
+            return null;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if (!$file->isFile()) {
+                continue;
+            }
+            if ($file->getFilename() === $filename) {
+                return $file->getPathname();
+            }
+        }
+
+        return null;
+    }
+
     public function show($filename)
     {
         // 1️⃣ CEK LOGIN
@@ -17,8 +40,19 @@ class Tampilfoto extends Controller
         // 2️⃣ AMANKAN NAMA FILE
         $filename = basename($filename);
 
-        // 3️⃣ TENTUKAN PATH
-        $path = WRITEPATH . 'uploads/photos/' . $filename;
+        // 3️⃣ TENTUKAN PATH BERDASARKAN PEMANGGIL
+        $referer = (string) ($this->request->getServer('HTTP_REFERER') ?? '');
+        $isFromLaporanAbsensi = strpos($referer, '/absensi/laporan') !== false;
+
+        if ($isFromLaporanAbsensi) {
+            $path = $this->findAbsensiFile($filename);
+            if (!$path) {
+                // fallback agar pemanggilan lama tetap jalan
+                $path = WRITEPATH . 'uploads/photos/' . $filename;
+            }
+        } else {
+            $path = WRITEPATH . 'uploads/photos/' . $filename;
+        }
 
         // 4️⃣ CEK FILE
         if (! is_file($path)) {

@@ -188,7 +188,8 @@ class Absensi extends BaseController
 
         $selectedFields = $this->getSelectedFields();
 
-        $selectFields = array_values(array_unique(array_merge(['id'], $selectedFields)));
+        $mapFields = ['latitude', 'longitude', 'latpulang', 'lonpulang', 'foto2', 'fotopulang2'];
+        $selectFields = array_values(array_unique(array_merge(['id'], $selectedFields, $mapFields)));
 
         $data = $builder
             ->select(implode(',', $selectFields))
@@ -206,6 +207,12 @@ class Absensi extends BaseController
             foreach ($selectedFields as $field) {
                 $row[$field] = $r[$field] ?? '';
             }
+            $row['latitude'] = $r['latitude'] ?? '';
+            $row['longitude'] = $r['longitude'] ?? '';
+            $row['latpulang'] = $r['latpulang'] ?? '';
+            $row['lonpulang'] = $r['lonpulang'] ?? '';
+            $row['foto2'] = $r['foto2'] ?? '';
+            $row['fotopulang2'] = $r['fotopulang2'] ?? '';
             $rows[] = $row;
         }
 

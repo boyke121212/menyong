@@ -153,6 +153,121 @@
         gap: 6px;
         font-size: 13px;
     }
+
+    .btn-map {
+        background: #0ea5a4;
+        color: #fff;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 0;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    #attendanceMap {
+        width: 100%;
+        height: 420px;
+        border-radius: 8px;
+    }
+
+    .map-info {
+        margin-bottom: 10px;
+        color: #dc2626;
+        font-size: 13px;
+    }
+
+    .map-pin-label {
+        background: #fff;
+        border: 1px solid #bbb;
+        border-radius: 4px;
+        padding: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #222;
+    }
+
+    .map-pin-title {
+        margin-bottom: 4px;
+    }
+
+    .map-pin-photo {
+        width: 110px;
+        height: 110px;
+        object-fit: cover;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        display: block;
+        cursor: pointer;
+    }
+
+    #mapModal .modal-dialog {
+        width: 95%;
+        max-width: 1400px;
+    }
+
+    #previewModal .modal-dialog {
+        width: 90%;
+        max-width: 1200px;
+    }
+
+    #previewImage {
+        max-width: 100%;
+        max-height: none;
+        object-fit: contain;
+        transform-origin: center center;
+        transition: transform .12s ease;
+    }
+
+    .preview-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .preview-zoom-btn {
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #111827;
+        border-radius: 6px;
+        min-width: 40px;
+        height: 34px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .preview-canvas {
+        width: 100%;
+        height: 75vh;
+        overflow: auto;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f8fafc;
+    }
+
+    .map-pin-empty {
+        font-size: 11px;
+        color: #6b7280;
+    }
+
+    .attendance-pin {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        border: 2px solid #fff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    }
+
+    .attendance-pin.masuk {
+        background: #16a34a;
+    }
+
+    .attendance-pin.pulang {
+        background: #dc2626;
+    }
     </style>
 </head>
 
@@ -233,11 +348,266 @@
         <div id="expFields"></div>
     </form>
 
+    <div class="modal fade" id="mapModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title">Lokasi Absensi</h4>
+                    <button type="button" class="close" onclick="closeMapModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="mapInfo" class="map-info" style="display:none;"></div>
+                    <div id="attendanceMap"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="previewModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4 class="modal-title" id="previewTitle">Preview Foto</h4>
+                    <button type="button" class="close" onclick="closePreviewModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="preview-toolbar">
+                        <button type="button" class="preview-zoom-btn" onclick="zoomOutPreview()">-</button>
+                        <button type="button" class="preview-zoom-btn" onclick="resetPreviewZoom()">Reset</button>
+                        <button type="button" class="preview-zoom-btn" onclick="zoomInPreview()">+</button>
+                    </div>
+                    <div id="previewCanvas" class="preview-canvas">
+                        <img id="previewImage" src="" alt="Preview">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+
     <script>
     const fieldLabels = <?= json_encode($fieldLabels) ?>;
     const defaultFields = <?= json_encode($defaultFields) ?>;
     let table = null;
     let chart = null;
+    let attendanceMapInstance = null;
+    let attendanceMapLayer = null;
+    let previewScale = 1;
+
+    function toCoord(value) {
+        const parsed = parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function distanceMeters(lat1, lon1, lat2, lon2) {
+        const toRad = (deg) => deg * Math.PI / 180;
+        const R = 6371000;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function offsetByMeters(lat, lon, metersNorth, metersEast) {
+        const dLat = metersNorth / 111320;
+        const dLon = metersEast / (111320 * Math.cos(lat * Math.PI / 180));
+        return [lat + dLat, lon + dLon];
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function photoTooltipHtml(label, filename) {
+        const safeLabel = escapeHtml(label);
+        const safeFile = String(filename ?? '').trim();
+        if (!safeFile) {
+            return `<div class="map-pin-title">${safeLabel}</div><div class="map-pin-empty">Foto tidak tersedia</div>`;
+        }
+
+        const url = "<?= base_url('tampilfoto') ?>/" + encodeURIComponent(safeFile);
+        return `<div class="map-pin-title">${safeLabel}</div><img class="map-pin-photo" src="${url}" alt="${safeLabel}" onclick="openImagePreview('${url.replace(/'/g, "\\'")}','${safeLabel.replace(/'/g, "\\'")}')" onerror="this.outerHTML='<div class=&quot;map-pin-empty&quot;>Foto tidak ditemukan</div>'">`;
+    }
+
+    function closeMapModal() {
+        $('#mapModal').modal('hide');
+    }
+
+    function openImagePreview(url, label) {
+        const img = document.getElementById('previewImage');
+        const title = document.getElementById('previewTitle');
+        img.src = url;
+        title.textContent = `Preview Foto ${label}`;
+        resetPreviewZoom();
+        $('#previewModal').modal('show');
+    }
+
+    function closePreviewModal() {
+        $('#previewModal').modal('hide');
+    }
+
+    function applyPreviewZoom() {
+        const img = document.getElementById('previewImage');
+        img.style.transform = `scale(${previewScale})`;
+    }
+
+    function zoomInPreview() {
+        previewScale = Math.min(8, previewScale + 0.2);
+        applyPreviewZoom();
+    }
+
+    function zoomOutPreview() {
+        previewScale = Math.max(0.2, previewScale - 0.2);
+        applyPreviewZoom();
+    }
+
+    function resetPreviewZoom() {
+        previewScale = 1;
+        applyPreviewZoom();
+    }
+
+    function openMapModal(latMasukRaw, lonMasukRaw, latPulangRaw, lonPulangRaw, fotoMasukRaw, fotoPulangRaw) {
+        const latMasuk = toCoord(latMasukRaw);
+        const lonMasuk = toCoord(lonMasukRaw);
+        const latPulang = toCoord(latPulangRaw);
+        const lonPulang = toCoord(lonPulangRaw);
+        const fotoMasuk = String(fotoMasukRaw ?? '');
+        const fotoPulang = String(fotoPulangRaw ?? '');
+        const infoEl = document.getElementById('mapInfo');
+
+        if (latMasuk === null || lonMasuk === null) {
+            infoEl.style.display = 'block';
+            infoEl.textContent = 'Koordinat masuk tidak tersedia.';
+            document.getElementById('attendanceMap').innerHTML = '';
+            $('#mapModal').modal('show');
+            return;
+        }
+
+        infoEl.style.display = 'none';
+        infoEl.textContent = '';
+        $('#mapModal').modal('show');
+
+        setTimeout(() => {
+            if (typeof L === 'undefined') {
+                infoEl.style.display = 'block';
+                infoEl.textContent = 'Library map belum termuat.';
+                return;
+            }
+
+            if (!attendanceMapInstance) {
+                attendanceMapInstance = L.map('attendanceMap');
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(attendanceMapInstance);
+            }
+
+            if (attendanceMapLayer) {
+                attendanceMapLayer.clearLayers();
+            } else {
+                attendanceMapLayer = L.layerGroup().addTo(attendanceMapInstance);
+            }
+
+            const points = [];
+            let masukPoint = [latMasuk, lonMasuk];
+            let pulangPoint = null;
+            let isNearPoint = false;
+            let isExactSamePoint = false;
+
+            const masukIcon = L.divIcon({
+                className: '',
+                html: '<div class="attendance-pin masuk"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+            const pulangIcon = L.divIcon({
+                className: '',
+                html: '<div class="attendance-pin pulang"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            });
+
+            if (latPulang !== null && lonPulang !== null) {
+                const dist = distanceMeters(latMasuk, lonMasuk, latPulang, lonPulang);
+                if (dist < 15) {
+                    isNearPoint = true;
+                    isExactSamePoint = dist < 0.5;
+                    // Jika terlalu dekat, geser visual marker agar tidak bertumpuk.
+                    const offsetMeter = isExactSamePoint ? 12 : 8;
+                    masukPoint = offsetByMeters(latMasuk, lonMasuk, offsetMeter, -offsetMeter);
+                    pulangPoint = offsetByMeters(latPulang, lonPulang, -offsetMeter, offsetMeter);
+                } else {
+                    pulangPoint = [latPulang, lonPulang];
+                }
+            }
+
+            const masukMarker = L.marker(masukPoint, {
+                icon: masukIcon
+            }).addTo(attendanceMapLayer);
+            masukMarker.bindTooltip(photoTooltipHtml('Masuk', fotoMasuk), {
+                permanent: true,
+                direction: 'top',
+                offset: [0, -8],
+                className: 'map-pin-label',
+                interactive: true
+            });
+            points.push(masukPoint);
+
+            if (pulangPoint) {
+                const pulangMarker = L.marker(pulangPoint, {
+                    icon: pulangIcon
+                }).addTo(attendanceMapLayer);
+                pulangMarker.bindTooltip(photoTooltipHtml('Pulang', fotoPulang), {
+                    permanent: true,
+                    direction: 'top',
+                    offset: [0, -8],
+                    className: 'map-pin-label',
+                    interactive: true
+                });
+                points.push(pulangPoint);
+            }
+
+            if (points.length === 1) {
+                attendanceMapInstance.setView(points[0], 16);
+            } else {
+                attendanceMapInstance.fitBounds(points, {
+                    padding: [80, 80],
+                    maxZoom: 19
+                });
+                const minZoomForNear = isExactSamePoint ? 19 : (isNearPoint ? 18 : 0);
+                if (minZoomForNear > 0 && attendanceMapInstance.getZoom() < minZoomForNear) {
+                    attendanceMapInstance.setZoom(minZoomForNear);
+                }
+            }
+            attendanceMapInstance.invalidateSize();
+        }, 250);
+    }
+
+    $('#mapModal').on('hidden.bs.modal', function() {
+        if (attendanceMapLayer) {
+            attendanceMapLayer.clearLayers();
+        }
+    });
+
+    $('#previewModal').on('hidden.bs.modal', function() {
+        document.getElementById('previewImage').src = '';
+        document.getElementById('previewTitle').textContent = 'Preview Foto';
+        resetPreviewZoom();
+    });
+
 
     function getSelectedFields() {
         const selected = [];
@@ -258,6 +628,29 @@
                 data: field,
                 title: fieldLabels[field] || field
             });
+        });
+
+        columns.push({
+            data: null,
+            title: 'Aksi',
+            orderable: false,
+            searchable: false,
+            render: function(data, type, row) {
+                const latMasuk = row.latitude ?? '';
+                const lonMasuk = row.longitude ?? '';
+                const latPulang = row.latpulang ?? '';
+                const lonPulang = row.lonpulang ?? '';
+                const fotoMasuk = row.foto2 ?? '';
+                const fotoPulang = row.fotopulang2 ?? '';
+                const esc = (v) => String(v ?? '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;');
+
+                return `<button class="btn-map" onclick="openMapModal('${esc(latMasuk)}','${esc(lonMasuk)}','${esc(latPulang)}','${esc(lonPulang)}','${esc(fotoMasuk)}','${esc(fotoPulang)}')">Tampilkan Map</button>`;
+            }
         });
 
         return columns;
