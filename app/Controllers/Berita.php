@@ -19,6 +19,40 @@ class Berita extends BaseController
         $this->db = Database::connect();
     }
 
+    private function toBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        $num  = (int) $value;
+
+        if ($unit === 'g') {
+            return $num * 1024 * 1024 * 1024;
+        }
+        if ($unit === 'm') {
+            return $num * 1024 * 1024;
+        }
+        if ($unit === 'k') {
+            return $num * 1024;
+        }
+
+        return (int) $value;
+    }
+
+    private function isPostPossiblyTooLarge(): bool
+    {
+        $contentLength = (int) ($this->request->getServer('CONTENT_LENGTH') ?? 0);
+        if ($contentLength <= 0) {
+            return false;
+        }
+
+        $postMax = $this->toBytes((string) ini_get('post_max_size'));
+        return $postMax > 0 && $contentLength > $postMax;
+    }
+
     private function ensureLogBeritaTable(): void
     {
         $sql = "
@@ -232,12 +266,27 @@ class Berita extends BaseController
 
     public function save()
     {
-        $judul   = trim((string) $this->request->getPost('judul'));
-        $isi     = (string) $this->request->getPost('isi');
-        $tanggal = (string) $this->request->getPost('tanggal');
+        if ($this->isPostPossiblyTooLarge()) {
+            return redirect()->back()->withInput()->with('flasherror', 'Ukuran upload terlalu besar. Kecilkan file foto/PDF lalu coba lagi.');
+        }
 
-        if ($judul === '' || trim(strip_tags($isi)) === '' || $tanggal === '') {
-            return redirect()->back()->withInput()->with('flasherror', 'Judul, isi, dan tanggal wajib diisi');
+        $judul   = trim((string) $this->request->getPost('judul'));
+        $isi     = trim((string) $this->request->getPost('isi'));
+        $tanggal = trim((string) $this->request->getPost('tanggal'));
+
+        $missing = [];
+        if ($judul === '') {
+            $missing[] = 'Judul';
+        }
+        if ($isi === '') {
+            $missing[] = 'Isi';
+        }
+        if ($tanggal === '') {
+            $missing[] = 'Tanggal';
+        }
+
+        if (!empty($missing)) {
+            return redirect()->back()->withInput()->with('flasherror', implode(', ', $missing) . ' wajib diisi');
         }
 
         $fotoName = null;

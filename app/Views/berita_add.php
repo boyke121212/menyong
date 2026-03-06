@@ -61,16 +61,3 @@ $tanggal = $timestamp ? date('Y-m-d', $timestamp) : date('Y-m-d');
         </div>
     </div>
 </div>
-
-<script>
-if (typeof tinymce !== 'undefined') {
-    tinymce.init({
-        selector: '#isi_editor',
-        height: 320,
-        menubar: false,
-        plugins: 'lists link code',
-        toolbar: 'undo redo | bold italic underline | bullist numlist | link | code',
-        branding: false
-    });
-}
-</script>

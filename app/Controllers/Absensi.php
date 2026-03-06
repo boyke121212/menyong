@@ -20,6 +20,8 @@ use App\Models\Dauo;
 
 class Absensi extends BaseController
 {
+    private ?array $absensiPhotoIndex = null;
+
     private array $absensiFields = [
         'id',
         'userId',
@@ -79,6 +81,55 @@ class Absensi extends BaseController
     public function __construct()
     {
         $this->dauo = new Dauo();
+    }
+
+    private function buildAbsensiPhotoIndex(): array
+    {
+        if ($this->absensiPhotoIndex !== null) {
+            return $this->absensiPhotoIndex;
+        }
+
+        $index = [];
+        $baseDir = WRITEPATH . 'uploads/absensi';
+        if (is_dir($baseDir)) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($baseDir, \FilesystemIterator::SKIP_DOTS)
+            );
+
+            foreach ($iterator as $file) {
+                if (!$file->isFile()) {
+                    continue;
+                }
+
+                $filename = $file->getFilename();
+                if ($filename !== '') {
+                    $index[$filename] = $file->getPathname();
+                }
+            }
+        }
+
+        $this->absensiPhotoIndex = $index;
+        return $this->absensiPhotoIndex;
+    }
+
+    private function resolvePhotoPath(string $filename): ?string
+    {
+        $safeName = basename(trim($filename));
+        if ($safeName === '') {
+            return null;
+        }
+
+        $index = $this->buildAbsensiPhotoIndex();
+        if (isset($index[$safeName]) && is_file($index[$safeName])) {
+            return $index[$safeName];
+        }
+
+        $fallback = WRITEPATH . 'uploads/photos/' . $safeName;
+        if (is_file($fallback)) {
+            return $fallback;
+        }
+
+        return null;
     }
 
     public function laporan()
@@ -416,15 +467,57 @@ class Absensi extends BaseController
             ],
         ]);
 
+        $photoFields = ['foto', 'foto1', 'foto2', 'fotopulang', 'fotopulang2'];
+        $photoFieldSet = array_flip($photoFields);
+
         // DATA
         $row = $headerRow + 1;
 
         foreach ($data as $d) {
             $col = 'A';
+            $rowHeight = 0;
             foreach ($selectedFields as $field) {
-                $sheet->setCellValue($col . $row, (string) ($d[$field] ?? ''));
+                $cell = $col . $row;
+                $value = (string) ($d[$field] ?? '');
+
+                if (!isset($photoFieldSet[$field])) {
+                    $sheet->setCellValue($cell, $value);
+                    $col++;
+                    continue;
+                }
+
+                if ($value === '') {
+                    $sheet->setCellValue($cell, '');
+                    $col++;
+                    continue;
+                }
+
+                $photoPath = $this->resolvePhotoPath($value);
+                if ($photoPath && is_readable($photoPath)) {
+                    $sheet->setCellValue($cell, '');
+                    $drawing = new Drawing();
+                    $drawing->setName($field . '_' . $row);
+                    $drawing->setDescription($value);
+                    $drawing->setPath($photoPath);
+                    $drawing->setCoordinates($cell);
+                    $drawing->setOffsetX(0);
+                    $drawing->setOffsetY(0);
+                    $drawing->setResizeProportional(false);
+                    $drawing->setWidth(150);
+                    $drawing->setHeight(110);
+                    $drawing->setWorksheet($sheet);
+                    $rowHeight = max($rowHeight, 84);
+                } else {
+                    $sheet->setCellValue($cell, 'File tidak ditemukan');
+                }
+
                 $col++;
             }
+
+            if ($rowHeight > 0) {
+                $sheet->getRowDimension($row)->setRowHeight($rowHeight);
+            }
+
             $row++;
         }
 
@@ -534,8 +627,16 @@ class Absensi extends BaseController
         $sheet->freezePane('A6');
         $sheet->setAutoFilter("A{$headerRow}:{$lastDataCol}{$headerRow}");
 
-        $lastDataCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(max(count($selectedFields), 2));
-        foreach (range('A', $lastDataCol) as $col) {
+        $lastColumnIndex = max(count($selectedFields), 2);
+        foreach (range(1, $lastColumnIndex) as $idx) {
+            $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($idx);
+            $field = $selectedFields[$idx - 1] ?? null;
+
+            if ($field !== null && isset($photoFieldSet[$field])) {
+                $sheet->getColumnDimension($col)->setWidth(22);
+                continue;
+            }
+
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 

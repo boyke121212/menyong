@@ -394,6 +394,7 @@
     <script>
     const fieldLabels = <?= json_encode($fieldLabels) ?>;
     const defaultFields = <?= json_encode($defaultFields) ?>;
+    const photoFields = new Set(['foto', 'foto1', 'foto2', 'fotopulang', 'fotopulang2']);
     let table = null;
     let chart = null;
     let attendanceMapInstance = null;
@@ -624,10 +625,28 @@
         }];
 
         selectedFields.forEach(function(field) {
-            columns.push({
+            const column = {
                 data: field,
                 title: fieldLabels[field] || field
-            });
+            };
+
+            if (photoFields.has(field)) {
+                column.render = function(data, type) {
+                    const file = String(data ?? '').trim();
+                    if (type !== 'display') {
+                        return file;
+                    }
+                    if (!file) {
+                        return '-';
+                    }
+
+                    const url = "<?= base_url('tampilfoto') ?>/" + encodeURIComponent(file);
+                    const safeFile = escapeHtml(file);
+                    return `<img src="${url}" alt="${safeFile}" style="width:70px;height:70px;object-fit:cover;border:1px solid #ddd;border-radius:4px;cursor:pointer;" onclick="openImagePreview('${url.replace(/'/g, "\\'")}','${safeFile.replace(/'/g, "\\'")}')" onerror="this.outerHTML='-'">`;
+                };
+            }
+
+            columns.push(column);
         });
 
         columns.push({
